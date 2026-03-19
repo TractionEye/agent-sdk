@@ -162,6 +162,27 @@ async function run() {
   }
 
   // ── Summary ──────────────────────────────────────────────────────────────
+  // ── 10. findToken — symbol search ─────────────────────────────────────────
+  console.log('\n[10] findToken() — resolve WETH symbol to address');
+  try {
+    const token = await client!.findToken('WETH');
+    if (token && token.address && token.symbol === 'WETH') {
+      ok('findToken() WETH', `address=${token.address.slice(0, 12)}... decimals=${token.decimals}`);
+    } else {
+      fail('findToken() WETH', `unexpected result: ${JSON.stringify(token)}`);
+    }
+  } catch (e) { fail('findToken() WETH', e); }
+
+  console.log('\n[11] findToken() — unknown symbol (expect null)');
+  try {
+    const token = await client!.findToken('NOTEXISTSXYZ999');
+    if (token === null) {
+      ok('findToken() unknown symbol', 'returned null as expected');
+    } else {
+      fail('findToken() unknown symbol', `expected null, got ${JSON.stringify(token)}`);
+    }
+  } catch (e) { fail('findToken() unknown symbol', e); }
+
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
   if (failed > 0) process.exit(1);
 }

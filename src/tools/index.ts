@@ -29,6 +29,19 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
       handler: async () => client.getAvailableTokens(),
     },
     {
+      name: 'tractioneye_find_token',
+      description: 'Use this to find a token by its symbol (e.g. "WETH") and get its contract address and decimals. Call this before previewTrade or executeTrade when you only know the symbol.',
+      parameters: {
+        type: 'object',
+        properties: {
+          symbol: { type: 'string', description: 'Token symbol, e.g. WETH, USDT, NOT' },
+        },
+        required: ['symbol'],
+        additionalProperties: false,
+      },
+      handler: async (args) => client.findToken(args['symbol'] as string),
+    },
+    {
       name: 'tractioneye_preview_trade',
       description: 'Use this to simulate a BUY or SELL trade for a given token and amount, and to get price impact, min receive amount and validation outcome. Always call this before executing a trade.',
       parameters: {

@@ -177,6 +177,26 @@ export class TractionEyeClient {
     }));
   }
 
+  /**
+   * Find a token by symbol. Use this to resolve symbol → address before trading.
+   * Example: const weth = await client.findToken('WETH');
+   */
+  async findToken(symbol: string): Promise<AvailableToken | null> {
+    logMethodCall('findToken', { symbol });
+    const r = await this.http.get<StonfiAssetsResponse>(
+      `/agent/assets/search?q=${encodeURIComponent(symbol)}&limit=10`,
+    );
+    const match = r.asset_list.find(
+      (a) => a.symbol.toUpperCase() === symbol.toUpperCase(),
+    );
+    if (!match) return null;
+    return {
+      address: match.contract_address,
+      symbol: match.symbol,
+      decimals: match.decimals,
+    };
+  }
+
   // ── Trade methods ─────────────────────────────────────────────────────────
 
   async previewTrade(req: TradePreviewRequest): Promise<TradePreview> {
