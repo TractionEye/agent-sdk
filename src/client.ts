@@ -165,25 +165,16 @@ export class TractionEyeClient {
     };
   }
 
-  async getAvailableTokens(): Promise<AvailableToken[]> {
-    logMethodCall('getAvailableTokens');
-    const pageSize = 200;
-    let offset = 0;
-    const tokens: AvailableToken[] = [];
-
-    while (true) {
-      const r = await this.http.get<StonfiAssetsResponse>(
-        `/stonfi/assets?limit=${pageSize}&offset=${offset}`,
-      );
-      const page = r.asset_list.map((a) => ({
-        address: a.contract_address,
-        symbol: a.symbol,
-        decimals: a.decimals,
-      }));
-      tokens.push(...page);
-      if (page.length < pageSize) return tokens;
-      offset += pageSize;
-    }
+  async getAvailableTokens(limit = 200, offset = 0): Promise<AvailableToken[]> {
+    logMethodCall('getAvailableTokens', { limit, offset });
+    const r = await this.http.get<StonfiAssetsResponse>(
+      `/agent/assets?limit=${limit}&offset=${offset}`,
+    );
+    return r.asset_list.map((a) => ({
+      address: a.contract_address,
+      symbol: a.symbol,
+      decimals: a.decimals,
+    }));
   }
 
   // ── Trade methods ─────────────────────────────────────────────────────────
