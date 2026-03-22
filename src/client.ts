@@ -441,14 +441,22 @@ export class TractionEyeClient {
       this.positionManager.stop();
     }
 
-    const executor = async (tokenAddress: string, action: 'BUY' | 'SELL', _sellPercent: number) => {
+    const executor = async (tokenAddress: string, action: 'BUY' | 'SELL', sellPercent: number) => {
       const portfolio = await this.getPortfolio();
       const token = portfolio.tokens.find((t) => t.address === tokenAddress);
       if (!token) return;
+
+      const pct = Math.max(0, Math.min(100, sellPercent));
+      const fullQty = BigInt(token.quantity);
+      const sellQty = pct >= 100
+        ? fullQty
+        : (fullQty * BigInt(Math.round(pct * 100))) / 10000n;
+      if (sellQty <= 0n) return;
+
       await this.executeTrade({
         action,
         tokenAddress,
-        amountNano: token.quantity,
+        amountNano: sellQty.toString(),
       });
     };
 
