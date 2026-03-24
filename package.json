@@ -8,9 +8,11 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "skills"
+    "skills",
+    "scripts"
   ],
   "scripts": {
+    "prepare": "tsup src/index.ts --format esm,cjs --dts",
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "check": "tsc --noEmit",
     "dev": "tsup src/index.ts --watch --format esm,cjs --dts",
