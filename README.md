@@ -54,7 +54,7 @@ TypeScript toolkit for building autonomous trading agents on the TON blockchain.
 ## Install
 
 ```bash
-npm install github:TractionEye/agent-sdk
+npm install github:TractionEye/TractionEye-Agent-kit
 ```
 
 ## Quick start
@@ -330,7 +330,7 @@ The SDK includes a built-in rate limiter with priority queues (Critical → High
 ## Local Development
 
 ```bash
-git clone https://github.com/TractionEye/agent-sdk
+git clone https://github.com/TractionEye/TractionEye-Agent-kit
 cd agent-sdk
 npm install
 npm run build
