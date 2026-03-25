@@ -116,6 +116,8 @@ export type PoolInfo = {
   buySellRatio: number;
   createdAt: string;
   baseTokenId?: string;
+  /** Tags indicating how this pool was discovered (e.g. 'top_volume', 'trending_1h', 'new'). */
+  tags: string[];
 };
 
 export type TokenPrice = {

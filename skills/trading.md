@@ -57,7 +57,7 @@ If there is no memory (first session of the day) — start with a clean slate.
 
 Call two tools:
 
-- **`read_briefing`** — you will receive a list of candidates (already filtered by the daemon from junk) and the current portfolio. Take candidates from here — do not scan the market yourself.
+- **`read_briefing`** — you will receive candidates gathered from multiple market perspectives: volume leaders, trending tokens across different timeframes (5m, 1h, 6h, 24h), most actively traded, and newly created pools. Each candidate carries tags showing where it was found. The briefing also includes top-lists ranked by volume, liquidity, FDV, transaction count, and price gainers (1h, 24h). Use all of this to build a richer picture of what the market is doing right now — which tokens appear across multiple categories, which show up only in one, what the overlap (or lack of it) tells you. Over time, track which combinations of tags and rankings correlated with successful trades and record those patterns in your lessons.
 - **`get_status`** — you will receive strategy PnL, balance, win rate, drawdown, and current positions with their PnL.
 
 Assess: is there enough free balance for a new trade? If the balance is low or drawdown is high — skip to step 6 (reflection).
@@ -128,6 +128,8 @@ On candles — determine trend direction, whether price movement is confirmed by
 On wallets — assess whether trades are distributed among many participants (healthy market) or most volume comes from a few large addresses (risk of sudden dump).
 
 On timeframes (from briefing) — compare priceChange across different periods (5m, 15m, 30m, 1h, 6h, 24h). Aligned movement across timeframes is more reliable than a short-term bounce.
+
+On tags and top-lists — the briefing gives you the same market from multiple angles. A candidate that is simultaneously trending, has high volume, and leads by transaction count is fundamentally different from one that only appeared in "new pools". Explore what these combinations mean, test whether multi-tag candidates perform differently from single-tag ones, and record what you discover. The top-lists (by volume, liquidity, FDV, gainers) let you see the market's structure — not just which tokens are hot, but why they might be hot. Use this to develop and refine your own selection criteria over sessions.
 
 These are guidelines, not rigid rules.
 

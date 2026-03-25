@@ -31,7 +31,7 @@ As a result, an AI agent becomes an autonomous manager of a public trading strat
 └──────────────────┬──────────────────────────┘
                    │
          ┌─────────▼──────────┐
-         │  Agent Kit (SDK)   │
+         │    Agent Kit       │
          │  TractionEyeClient │
          └──┬─────────────┬───┘
             │             │
@@ -56,7 +56,7 @@ As a result, an AI agent becomes an autonomous manager of a public trading strat
 └──────────────────────────────────────┘
 ```
 
-> **This SDK does not manage wallets or private keys.** All trade execution happens server-side on TractionEye infrastructure.
+> **The Agent Kit does not manage wallets or private keys.** All trade execution happens server-side on TractionEye infrastructure.
 
 ## Install
 
@@ -120,7 +120,7 @@ read_briefing → analyze_pool → buy_token → set_tp_sl → get_status
 
 | Tool | Description |
 |------|-------------|
-| `read_briefing` | Get filtered market candidates and portfolio from the background daemon. **Call first** on every trading session. |
+| `read_briefing` | Get market candidates from multiple perspectives (volume, trending, activity, new), tagged by source, with top-lists by key metrics. **Call first** on every trading session. |
 | `analyze_pool` | Deep-analyze a pool: OHLCV candles, trade history, whale wallet concentration. Call after briefing, before buying. |
 | `buy_token` | Buy a token. Handles resolve → preview → validate → execute → poll internally. |
 | `sell_token` | Sell a token (full or partial). Use `"all"` for amountNano to sell entire position. |
@@ -153,10 +153,12 @@ The skill is designed for [OpenClaw](https://openclaw.com) agents but the algori
 The daemon runs as a persistent process (via pm2) and performs two functions:
 
 ### Market screening
-- Fetches trending, new, and general TON pools from GeckoTerminal every 3 minutes (configurable)
-- Applies junk filter (low liquidity, zero volume, unlocked liquidity)
+- Fetches TON pools from 7 sources every 3 minutes (configurable): volume leaders, transaction leaders, trending (5m/1h/6h/24h), newly created
+- Tags each pool by how it was discovered (e.g. `top_volume`, `trending_1h`, `new`) — pools found in multiple sources get multiple tags
+- Excludes stablecoins (USDT, USDC, etc.) and junk pools (low liquidity, zero volume, unlocked liquidity)
 - Applies agent screening criteria from `~/.tractioneye/config.json`
-- Writes `~/.tractioneye/briefing.json` with candidates + portfolio + strategy state
+- Builds top-lists by volume, liquidity, FDV, transaction count, and price gainers (1h, 24h) via client-side sorting
+- Writes `~/.tractioneye/briefing.json` with tagged candidates + top-lists + portfolio + strategy state
 
 ### TP/SL monitoring
 - Polls token prices continuously
@@ -214,7 +216,7 @@ The config is created automatically on `npm install` with sensible defaults.
 
 ---
 
-## SDK Methods
+## Client Methods
 
 The client exposes these methods directly. Agent tools use them internally, but they are also available for custom integrations.
 
@@ -239,9 +241,9 @@ The client exposes these methods directly. Agent tools use them internally, but 
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `gecko.getTrendingPools()` | `PoolInfo[]` | Trending pools on TON |
+| `gecko.getTrendingPools(duration?)` | `PoolInfo[]` | Trending pools on TON (duration: `5m`, `1h`, `6h`, `24h`) |
 | `gecko.getNewPools()` | `PoolInfo[]` | Newly created pools |
-| `gecko.getPools()` | `PoolInfo[]` | General pool listing |
+| `gecko.getPools(page?, sort?)` | `PoolInfo[]` | Pool listing (sort: `h24_volume_usd_desc`, `h24_tx_count_desc`) |
 | `gecko.getPoolTrades(addr)` | `TradeInfo[]` | Recent trades for a pool |
 | `gecko.getPoolOhlcv(addr, tf)` | `OhlcvResponse` | OHLCV candles (day/hour/minute) |
 | `gecko.getTokenPrice(addr)` | `TokenPrice` | Current token price |
@@ -279,6 +281,7 @@ Every `PoolInfo` object includes:
 | `uniqueBuyers1h` / `6h` / `24h` | `number` | Unique buyer wallets |
 | `uniqueSellers1h` / `6h` / `24h` | `number` | Unique seller wallets |
 | `buySellRatio` | `number` | Buy/sell ratio |
+| `tags` | `string[]` | How the pool was discovered: `top_volume`, `top_tx_count`, `trending_5m`, `trending_1h`, `trending_6h`, `trending_24h`, `new` |
 
 ---
 
@@ -334,10 +337,10 @@ GeckoTerminal API: 30 requests/minute shared across all components.
 | Component | Budget | Usage |
 |-----------|--------|-------|
 | Daemon (TP/SL) | ~6 req/min | Price polling for open positions |
-| Daemon (screening) | ~1.5 req/min | Pool fetching every 3 min |
-| Agent tools | ~22 req/min | `analyze_pool` = 2 req per candidate |
+| Daemon (screening) | ~2.5 req/min | 7 sources every 3 min |
+| Agent tools | ~21 req/min | `analyze_pool` = 2 req per candidate |
 
-The SDK includes a built-in rate limiter with priority queues (Critical → High → Low).
+The Agent Kit includes a built-in rate limiter with priority queues (Critical → High → Low).
 
 ---
 

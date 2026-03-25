@@ -127,17 +127,17 @@ var GeckoTerminalClient = class {
   }
   // ---------- Pool endpoints ----------
   /** Fetch pools for TON network (paginated, up to 20 per page). */
-  async getPools(page = 1, priority = 2 /* Low */) {
+  async getPools(page = 1, sort = "h24_volume_usd_desc", priority = 2 /* Low */) {
     const data = await this.get(
-      `/networks/${NETWORK}/pools?page=${page}`,
+      `/networks/${NETWORK}/pools?page=${page}&sort=${sort}`,
       priority
     );
     return data.data.map(mapPool);
   }
   /** Trending pools on TON. */
-  async getTrendingPools(priority = 2 /* Low */) {
+  async getTrendingPools(duration = "24h", priority = 2 /* Low */) {
     const data = await this.get(
-      `/networks/${NETWORK}/trending_pools`,
+      `/networks/${NETWORK}/trending_pools?duration=${duration}`,
       priority
     );
     return data.data.map(mapPool);
@@ -183,7 +183,8 @@ var GeckoTerminalClient = class {
       uniqueSellers6h: 0,
       uniqueSellers24h: 0,
       buySellRatio: 0,
-      createdAt: ""
+      createdAt: "",
+      tags: []
     }));
   }
   /** Fetch details for multiple pools (up to 30 addresses, comma-separated). */
@@ -314,7 +315,8 @@ function mapPool(p) {
     uniqueSellers24h: a.transactions.h24.sellers ?? 0,
     buySellRatio: sells > 0 ? buys / sells : buys > 0 ? Infinity : 0,
     createdAt: a.pool_created_at,
-    baseTokenId: p.relationships?.base_token?.data?.id
+    baseTokenId: p.relationships?.base_token?.data?.id,
+    tags: []
   };
 }
 
@@ -973,7 +975,7 @@ function createTractionEyeTools(client) {
     // ── 1. read_briefing ────────────────────────────────────────────────
     {
       name: "tractioneye_read_briefing",
-      description: "Call this FIRST on every trading session tick. Returns filtered market candidates (enriched pool data) and current portfolio state written by the background daemon. If briefing is empty, the daemon may not be running yet.",
+      description: "Call this FIRST on every trading session tick. Returns market candidates collected from multiple perspectives (volume leaders, trending across timeframes, most active, newly created), current portfolio, and strategy performance. Each candidate has tags showing how it was discovered \u2014 a pool appearing in several categories simultaneously may indicate a stronger signal. The briefing also includes top-lists sorted by volume, liquidity, FDV, transaction count, and price gainers (1h, 24h) \u2014 use these different views to compare, form hypotheses about what makes a good candidate, and verify your assumptions across sessions.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => {
         const briefing = readBriefing();

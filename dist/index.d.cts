@@ -54,6 +54,8 @@ type PoolInfo = {
     buySellRatio: number;
     createdAt: string;
     baseTokenId?: string;
+    /** Tags indicating how this pool was discovered (e.g. 'top_volume', 'trending_1h', 'new'). */
+    tags: string[];
 };
 type TokenPrice = {
     address: string;
@@ -100,9 +102,9 @@ declare class GeckoTerminalClient {
     private readonly limiter;
     constructor(limiter: RateLimiter);
     /** Fetch pools for TON network (paginated, up to 20 per page). */
-    getPools(page?: number, priority?: RequestPriority): Promise<PoolInfo[]>;
+    getPools(page?: number, sort?: 'h24_volume_usd_desc' | 'h24_tx_count_desc', priority?: RequestPriority): Promise<PoolInfo[]>;
     /** Trending pools on TON. */
-    getTrendingPools(priority?: RequestPriority): Promise<PoolInfo[]>;
+    getTrendingPools(duration?: '5m' | '1h' | '6h' | '24h', priority?: RequestPriority): Promise<PoolInfo[]>;
     /** Newly created pools on TON. */
     getNewPools(priority?: RequestPriority): Promise<PoolInfo[]>;
     /** Search pools by keyword, filtered to TON network. */

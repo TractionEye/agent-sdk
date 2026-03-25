@@ -246,6 +246,15 @@ function notifyAgent(
 
 // ── Screening + Briefing ───────────────────────────────────────────────────
 
+/** Stablecoin name patterns — pools with these in the name are excluded from candidates. */
+const STABLECOIN_PATTERNS = [/\bUSDT\b/i, /\bUSD₮\b/i, /\bUSDC\b/i, /\bDAI\b/i, /\bjUSDT\b/i, /\bjUSDC\b/i];
+
+function isStablecoinPool(name: string): boolean {
+  return STABLECOIN_PATTERNS.some((re) => re.test(name));
+}
+
+const TOP_LIST_SIZE = 10;
+
 function startScreeningLoop(): void {
   const interval = config.screening?.intervalMs ?? DEFAULT_SCREENING_INTERVAL_MS;
   // Run immediately
@@ -258,47 +267,71 @@ async function runScreening(): Promise<void> {
   if (!client) return;
 
   try {
-    // Fetch pools from all sources
-    const [trending, newPools, pools] = await Promise.all([
-      gecko.getTrendingPools(),
+    // Fetch pools from 7 sources for a comprehensive market view
+    const [
+      poolsByVolume,
+      poolsByTxCount,
+      trending5m,
+      trending1h,
+      trending6h,
+      trending24h,
+      newPools,
+    ] = await Promise.all([
+      gecko.getPools(1, 'h24_volume_usd_desc'),
+      gecko.getPools(1, 'h24_tx_count_desc'),
+      gecko.getTrendingPools('5m'),
+      gecko.getTrendingPools('1h'),
+      gecko.getTrendingPools('6h'),
+      gecko.getTrendingPools('24h'),
       gecko.getNewPools(),
-      gecko.getPools(),
     ]);
 
-    // Deduplicate
-    const seen = new Set<string>();
-    const allPools: PoolInfo[] = [];
-    for (const p of [...trending, ...newPools, ...pools]) {
-      if (!seen.has(p.poolAddress)) {
-        seen.add(p.poolAddress);
-        allPools.push(p);
+    // Tag each pool by source, then deduplicate — merge tags on collision
+    const taggedSources: Array<[PoolInfo[], string]> = [
+      [poolsByVolume, 'top_volume'],
+      [poolsByTxCount, 'top_tx_count'],
+      [trending5m, 'trending_5m'],
+      [trending1h, 'trending_1h'],
+      [trending6h, 'trending_6h'],
+      [trending24h, 'trending_24h'],
+      [newPools, 'new'],
+    ];
+
+    const poolMap = new Map<string, PoolInfo>();
+    for (const [pools, tag] of taggedSources) {
+      for (const p of pools) {
+        const existing = poolMap.get(p.poolAddress);
+        if (existing) {
+          if (!existing.tags.includes(tag)) existing.tags.push(tag);
+        } else {
+          p.tags = [tag];
+          poolMap.set(p.poolAddress, p);
+        }
       }
     }
 
-    // Junk filter (hardcoded)
-    let candidates = allPools.filter((p) => {
+    // Junk filter + stablecoin exclusion
+    let candidates = [...poolMap.values()].filter((p) => {
       if (p.reserveInUsd < (JUNK_FILTER.minLiquidityUsd ?? 0)) return false;
       if (p.volume24hUsd <= 0) return false;
-      // locked_liquidity_percentage = 0% (explicitly unlocked) → reject
-      // null (no data) → keep
       if (p.lockedLiquidityPercent === 0) return false;
+      if (isStablecoinPool(p.name)) return false;
       return true;
     });
 
     // Agent criteria filter from config
     const agentFilter = config.screening?.filter as ScreeningFilter | undefined;
     if (agentFilter) {
-      // Import matchesFilter logic via screener
-      const screenResult = await screener.screen({
-        filter: agentFilter,
-        sources: [], // no fetch — we'll filter manually
-      });
-      // Since sources=[] returns nothing, filter candidates manually
-      candidates = candidates.filter((pool) => {
-        // Re-check agent filter criteria inline
-        return passesFilter(pool, agentFilter);
-      });
+      candidates = candidates.filter((pool) => passesFilter(pool, agentFilter));
     }
+
+    // Build top-lists by client-side sorting (no extra API requests)
+    const topByVolume = [...candidates].sort((a, b) => b.volume24hUsd - a.volume24hUsd).slice(0, TOP_LIST_SIZE);
+    const topByLiquidity = [...candidates].sort((a, b) => b.reserveInUsd - a.reserveInUsd).slice(0, TOP_LIST_SIZE);
+    const topByFdv = [...candidates].filter((p) => p.fdvUsd != null).sort((a, b) => (b.fdvUsd ?? 0) - (a.fdvUsd ?? 0)).slice(0, TOP_LIST_SIZE);
+    const topGainers1h = [...candidates].sort((a, b) => b.priceChange1h - a.priceChange1h).slice(0, TOP_LIST_SIZE);
+    const topGainers24h = [...candidates].sort((a, b) => b.priceChange24h - a.priceChange24h).slice(0, TOP_LIST_SIZE);
+    const topByTxCount = [...candidates].sort((a, b) => b.transactions24h - a.transactions24h).slice(0, TOP_LIST_SIZE);
 
     // Fetch portfolio + strategy
     const [portfolio, strategy] = await Promise.all([
@@ -306,15 +339,24 @@ async function runScreening(): Promise<void> {
       client.getStrategySummary(),
     ]);
 
-    // Write briefing
+    // Write enriched briefing
     const briefing = {
       timestamp: new Date().toISOString(),
       candidates,
+      tops: {
+        byVolume: topByVolume.map((p) => p.poolAddress),
+        byLiquidity: topByLiquidity.map((p) => p.poolAddress),
+        byFdv: topByFdv.map((p) => p.poolAddress),
+        gainers1h: topGainers1h.map((p) => p.poolAddress),
+        gainers24h: topGainers24h.map((p) => p.poolAddress),
+        byTxCount: topByTxCount.map((p) => p.poolAddress),
+      },
       portfolio,
       strategy,
     };
 
     writeFileSync(briefingPath(), JSON.stringify(briefing, null, 2) + '\n', 'utf-8');
+    console.log(`[daemon] Briefing updated: ${candidates.length} candidates from ${poolMap.size} pools`);
   } catch (err) {
     console.error('[daemon] Screening error:', err);
   }

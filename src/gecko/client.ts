@@ -24,18 +24,25 @@ export class GeckoTerminalClient {
   // ---------- Pool endpoints ----------
 
   /** Fetch pools for TON network (paginated, up to 20 per page). */
-  async getPools(page = 1, priority = RequestPriority.Low): Promise<PoolInfo[]> {
+  async getPools(
+    page = 1,
+    sort: 'h24_volume_usd_desc' | 'h24_tx_count_desc' = 'h24_volume_usd_desc',
+    priority = RequestPriority.Low,
+  ): Promise<PoolInfo[]> {
     const data = await this.get<GeckoPoolsResponse>(
-      `/networks/${NETWORK}/pools?page=${page}`,
+      `/networks/${NETWORK}/pools?page=${page}&sort=${sort}`,
       priority,
     );
     return data.data.map(mapPool);
   }
 
   /** Trending pools on TON. */
-  async getTrendingPools(priority = RequestPriority.Low): Promise<PoolInfo[]> {
+  async getTrendingPools(
+    duration: '5m' | '1h' | '6h' | '24h' = '24h',
+    priority = RequestPriority.Low,
+  ): Promise<PoolInfo[]> {
     const data = await this.get<GeckoPoolsResponse>(
-      `/networks/${NETWORK}/trending_pools`,
+      `/networks/${NETWORK}/trending_pools?duration=${duration}`,
       priority,
     );
     return data.data.map(mapPool);
@@ -85,6 +92,7 @@ export class GeckoTerminalClient {
       uniqueSellers24h: 0,
       buySellRatio: 0,
       createdAt: '',
+      tags: [],
     }));
   }
 
@@ -242,5 +250,6 @@ function mapPool(p: GeckoPoolData): PoolInfo {
     buySellRatio: sells > 0 ? buys / sells : buys > 0 ? Infinity : 0,
     createdAt: a.pool_created_at,
     baseTokenId: p.relationships?.base_token?.data?.id,
+    tags: [],
   };
 }
