@@ -8,17 +8,19 @@ declare enum RequestPriority {
     Low = 2
 }
 /**
- * Token-bucket rate limiter with priority queue.
+ * Token-bucket rate limiter with priority queue and burst protection.
  * GeckoTerminal free tier: 30 requests per 60 seconds.
  */
 declare class RateLimiter {
     private tokens;
     private readonly maxTokens;
     private readonly windowMs;
+    private readonly minIntervalMs;
     private lastRefill;
+    private lastRequestTime;
     private queue;
     private draining;
-    constructor(maxTokens?: number, windowMs?: number);
+    constructor(maxTokens?: number, windowMs?: number, minIntervalMs?: number);
     /** Schedule a request with a given priority. Returns the result promise. */
     schedule<T>(priority: RequestPriority, execute: () => Promise<T>): Promise<T>;
     private refill;
