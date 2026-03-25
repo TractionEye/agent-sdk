@@ -49,6 +49,7 @@ let screener: TokenScreener;
 let positionManager: PositionManager | null = null;
 let limiter: RateLimiter;
 let screeningTimer: ReturnType<typeof setInterval> | null = null;
+let lastExecutionResult: { operationId: string; amountNano: string } | null = null;
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
@@ -130,16 +131,23 @@ function startTpSlMonitor(): void {
       : (fullQty * BigInt(Math.round(sellPercent * 100))) / 10000n;
     if (sellQty <= 0n) return;
 
-    await client.executeTrade({
+    const execution = await client.executeTrade({
       action: 'SELL',
       tokenAddress,
       amountNano: sellQty.toString(),
     });
+
+    // Store execution result for notifyAgent
+    lastExecutionResult = {
+      operationId: execution.operationId,
+      amountNano: sellQty.toString(),
+    };
   };
 
   const onEvent = (event: PositionEvent) => {
     console.log(`[daemon] ${event.type}: ${event.symbol} ${event.changePercent.toFixed(2)}%`);
-    notifyAgent(event);
+    notifyAgent(event, lastExecutionResult);
+    lastExecutionResult = null;
   };
 
   positionManager = new PositionManager(
@@ -202,7 +210,10 @@ function restartTpSlMonitor(): void {
   }
 }
 
-function notifyAgent(event: PositionEvent): void {
+function notifyAgent(
+  event: PositionEvent,
+  execution?: { operationId: string; amountNano: string } | null,
+): void {
   const sessionId = config.sessionId;
   const openclawPath = config.openclawPath ?? 'openclaw';
   if (!sessionId) {
@@ -210,7 +221,6 @@ function notifyAgent(event: PositionEvent): void {
     return;
   }
 
-  const pos = positionManager?.getPositions().find((p) => p.tokenAddress === event.tokenAddress);
   const payload = JSON.stringify({
     event: 'tp_sl_triggered',
     type: event.type,
@@ -220,6 +230,8 @@ function notifyAgent(event: PositionEvent): void {
     exitPriceUsd: event.currentPriceUsd,
     pnlPercent: event.changePercent,
     soldPercent: event.sellPercent,
+    amountNano: execution?.amountNano ?? null,
+    operationId: execution?.operationId ?? null,
     timestamp: new Date().toISOString(),
   });
 
@@ -300,7 +312,6 @@ async function runScreening(): Promise<void> {
       candidates,
       portfolio,
       strategy,
-      openSlots: (config.tpSl?.defaults as Record<string, unknown>)?.maxOpenPositions ?? null,
     };
 
     writeFileSync(briefingPath(), JSON.stringify(briefing, null, 2) + '\n', 'utf-8');
