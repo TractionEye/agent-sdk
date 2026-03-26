@@ -60,14 +60,25 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
       },
       handler: async (args) => {
         const poolAddress = args['poolAddress'] as string;
-        const timeframe = (args['ohlcvTimeframe'] as OhlcvTimeframe) ?? 'hour';
+        const requestedTimeframe = (args['ohlcvTimeframe'] as OhlcvTimeframe) ?? 'hour';
         const limit = (args['ohlcvLimit'] as number) ?? 30;
         const minVol = args['minTradeVolumeUsd'] as number | undefined;
 
-        const [trades, ohlcv] = await Promise.all([
-          client.gecko.getPoolTrades(poolAddress, minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : undefined),
-          client.gecko.getPoolOhlcv(poolAddress, timeframe, limit),
-        ]);
+        // Sequential requests with delay to avoid burst 429
+        const trades = await client.gecko.getPoolTrades(
+          poolAddress,
+          minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : undefined,
+        );
+        await new Promise((r) => setTimeout(r, 3_000));
+        let ohlcv = await client.gecko.getPoolOhlcv(poolAddress, requestedTimeframe, limit);
+        let usedTimeframe = requestedTimeframe;
+
+        // Fallback: if no candles, try minute timeframe (more data for new/small pools)
+        if (ohlcv.candles.length === 0 && requestedTimeframe !== 'minute') {
+          await new Promise((r) => setTimeout(r, 3_000));
+          ohlcv = await client.gecko.getPoolOhlcv(poolAddress, 'minute', limit);
+          usedTimeframe = 'minute';
+        }
 
         // Compute wallet concentration from trades
         const walletVolume = new Map<string, number>();
@@ -86,7 +97,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
 
         return {
           trades: { count: trades.length, items: trades.slice(0, 50) },
-          ohlcv: { timeframe, candles: ohlcv.candles, meta: ohlcv.meta },
+          ohlcv: { timeframe: usedTimeframe, candles: ohlcv.candles, meta: ohlcv.meta },
           walletConcentration: { topWallets, totalTradeVolumeUsd: totalVolume },
         };
       },
