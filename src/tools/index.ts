@@ -64,10 +64,13 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
         const limit = (args['ohlcvLimit'] as number) ?? 30;
         const minVol = args['minTradeVolumeUsd'] as number | undefined;
 
-        const [trades, ohlcv] = await Promise.all([
-          client.gecko.getPoolTrades(poolAddress, minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : undefined),
-          client.gecko.getPoolOhlcv(poolAddress, timeframe, limit),
-        ]);
+        // Sequential with delay to avoid burst 429
+        const trades = await client.gecko.getPoolTrades(
+          poolAddress,
+          minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : undefined,
+        );
+        await new Promise((r) => setTimeout(r, 3_000));
+        const ohlcv = await client.gecko.getPoolOhlcv(poolAddress, timeframe, limit);
 
         // Compute wallet concentration from trades
         const walletVolume = new Map<string, number>();

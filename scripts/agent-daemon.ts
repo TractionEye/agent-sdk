@@ -246,12 +246,10 @@ function notifyAgent(
 
 // ── Screening + Briefing ───────────────────────────────────────────────────
 
-/** Stablecoin symbols — pools containing these tokens are excluded from candidates. */
-const STABLECOIN_SYMBOLS = ['usdt', 'usd₮', 'usdc', 'jusdt', 'jusdc', 'dai', 'usdd', 'tusd'];
-
-function isStablecoinPool(name: string): boolean {
+/** Exclude pools paired with USDT — not useful as trading candidates. */
+function isUsdtPool(name: string): boolean {
   const lower = name.toLowerCase();
-  return STABLECOIN_SYMBOLS.some((s) => lower.includes(s));
+  return lower.includes('usdt') || lower.includes('usd₮');
 }
 
 const TOP_LIST_SIZE = 10;
@@ -310,7 +308,7 @@ async function runScreening(): Promise<void> {
       if (p.reserveInUsd < (JUNK_FILTER.minLiquidityUsd ?? 0)) return false;
       if (p.volume24hUsd <= 0) return false;
       if (p.lockedLiquidityPercent === 0) return false;
-      if (isStablecoinPool(p.name)) return false;
+      if (isUsdtPool(p.name)) return false;
       return true;
     });
 

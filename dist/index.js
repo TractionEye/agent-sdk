@@ -1020,10 +1020,12 @@ function createTractionEyeTools(client) {
         const timeframe = args["ohlcvTimeframe"] ?? "hour";
         const limit = args["ohlcvLimit"] ?? 30;
         const minVol = args["minTradeVolumeUsd"];
-        const [trades, ohlcv] = await Promise.all([
-          client.gecko.getPoolTrades(poolAddress, minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : void 0),
-          client.gecko.getPoolOhlcv(poolAddress, timeframe, limit)
-        ]);
+        const trades = await client.gecko.getPoolTrades(
+          poolAddress,
+          minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : void 0
+        );
+        await new Promise((r) => setTimeout(r, 3e3));
+        const ohlcv = await client.gecko.getPoolOhlcv(poolAddress, timeframe, limit);
         const walletVolume = /* @__PURE__ */ new Map();
         for (const t of trades) {
           walletVolume.set(t.txFromAddress, (walletVolume.get(t.txFromAddress) ?? 0) + t.volumeInUsd);
