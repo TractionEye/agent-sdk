@@ -159,6 +159,7 @@ The daemon runs as a persistent process (via pm2) and performs two functions:
 - Applies agent screening criteria from `~/.tractioneye/config.json`
 - Builds top-lists by volume, liquidity, FDV, transaction count, and price gainers (1h, 24h) via client-side sorting
 - Writes `~/.tractioneye/briefing.json` with tagged candidates + top-lists + portfolio + strategy state
+- **Automatically pauses screening while an agent session is active** (lock file expires after 5 minutes of inactivity) — gives the agent full GeckoTerminal API budget during trading sessions
 
 ### TP/SL monitoring
 - Polls token prices continuously
@@ -324,8 +325,9 @@ In simulation mode:
 
 ```
 ~/.tractioneye/
-├── config.json        ← Unified config (credentials, TP/SL, screening)
-└── briefing.json      ← Market candidates + portfolio (written by daemon)
+├── config.json            ← Unified config (credentials, TP/SL, screening)
+├── briefing.json          ← Market candidates + portfolio (written by daemon)
+└── agent-session.lock     ← Session lock (written by agent, read by daemon)
 ```
 
 ---
