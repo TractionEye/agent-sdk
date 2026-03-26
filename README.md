@@ -195,8 +195,8 @@ All configuration lives in `~/.tractioneye/config.json`:
   "screening": {
     "intervalMs": 180000,
     "filter": {
-      "minLiquidityUsd": 20000,
-      "minVolume24hUsd": 10000
+      "minLiquidityUsd": 1000,
+      "minVolume24hUsd": 500
     }
   }
 }
