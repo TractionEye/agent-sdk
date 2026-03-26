@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -78,5 +78,33 @@ export function readBriefing(): unknown {
     return JSON.parse(raw);
   } catch {
     return null;
+  }
+}
+
+// ── Agent session lock ─────────────────────────────────────────────────
+
+const SESSION_LOCK_FILE = 'agent-session.lock';
+const DEFAULT_SESSION_TIMEOUT_MS = 5 * 60_000; // 5 minutes
+
+/** Path to the agent session lock file. */
+export function sessionLockPath(): string {
+  return join(DEFAULT_DATA_DIR, SESSION_LOCK_FILE);
+}
+
+/** Touch the session lock file — signals that an agent is actively using the API. */
+export function touchSessionLock(): void {
+  ensureDataDir();
+  writeFileSync(sessionLockPath(), Date.now().toString(), 'utf-8');
+}
+
+/** Check if an agent session is active (lock file exists and is recent). */
+export function isAgentSessionActive(timeoutMs = DEFAULT_SESSION_TIMEOUT_MS): boolean {
+  try {
+    const raw = readFileSync(sessionLockPath(), 'utf-8').trim();
+    const lockTime = Number(raw);
+    if (!Number.isFinite(lockTime)) return false;
+    return Date.now() - lockTime < timeoutMs;
+  } catch {
+    return false;
   }
 }

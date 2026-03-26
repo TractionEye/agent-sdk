@@ -542,5 +542,11 @@ declare function writeConfig(config: DaemonConfig): void;
 declare function updateConfig(patch: Partial<DaemonConfig>): DaemonConfig;
 /** Read the briefing file. Returns null if not found. */
 declare function readBriefing(): unknown;
+/** Path to the agent session lock file. */
+declare function sessionLockPath(): string;
+/** Touch the session lock file — signals that an agent is actively using the API. */
+declare function touchSessionLock(): void;
+/** Check if an agent session is active (lock file exists and is recent). */
+declare function isAgentSessionActive(timeoutMs?: number): boolean;
 
-export { type AvailableToken, DEFAULT_DATA_DIR, type DaemonConfig, GeckoTerminalClient, type MonitorConfig, type OhlcvCandle, type OhlcvMeta, type OhlcvResponse, type OhlcvTimeframe, type OperationStatus, type OperationStatusType, type PoolInfo, type PortfolioSummary, type PositionConfig, type PositionEvent, PositionManager, RateLimiter, RequestPriority, type ScreeningConfig, type ScreeningFilter, type ScreeningSource, type SimulationResult, Simulator, type StrategySummary, type TokenPrice, TokenScreener, type TokenSummary, type TpSlConfig, type TpSlDefaults, type TrackedPosition, TractionEyeClient, type TractionEyeClientConfig, TractionEyeHttpError, type TradeAction, type TradeExecution, type TradeExecutionRequest, type TradeInfo, type TradePreview, type TradePreviewRequest, type ValidationOutcome, type VirtualTrade, briefingPath, configPath, createTractionEyeTools, ensureDataDir, readBriefing, readConfig, updateConfig, writeConfig };
+export { type AvailableToken, DEFAULT_DATA_DIR, type DaemonConfig, GeckoTerminalClient, type MonitorConfig, type OhlcvCandle, type OhlcvMeta, type OhlcvResponse, type OhlcvTimeframe, type OperationStatus, type OperationStatusType, type PoolInfo, type PortfolioSummary, type PositionConfig, type PositionEvent, PositionManager, RateLimiter, RequestPriority, type ScreeningConfig, type ScreeningFilter, type ScreeningSource, type SimulationResult, Simulator, type StrategySummary, type TokenPrice, TokenScreener, type TokenSummary, type TpSlConfig, type TpSlDefaults, type TrackedPosition, TractionEyeClient, type TractionEyeClientConfig, TractionEyeHttpError, type TradeAction, type TradeExecution, type TradeExecutionRequest, type TradeInfo, type TradePreview, type TradePreviewRequest, type ValidationOutcome, type VirtualTrade, briefingPath, configPath, createTractionEyeTools, ensureDataDir, isAgentSessionActive, readBriefing, readConfig, sessionLockPath, touchSessionLock, updateConfig, writeConfig };

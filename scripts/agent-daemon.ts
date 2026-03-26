@@ -22,6 +22,7 @@ import {
   briefingPath,
   configPath,
   ensureDataDir,
+  isAgentSessionActive,
   type PositionEvent,
   type PoolInfo,
   type ScreeningFilter,
@@ -264,6 +265,11 @@ function startScreeningLoop(): void {
 
 async function runScreening(): Promise<void> {
   if (!client) return;
+
+  if (isAgentSessionActive()) {
+    console.log('[daemon] Agent session active, skipping screening cycle');
+    return;
+  }
 
   try {
     // Fetch pools from 5 sources for a comprehensive market view

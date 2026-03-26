@@ -33,8 +33,11 @@ __export(index_exports, {
   configPath: () => configPath,
   createTractionEyeTools: () => createTractionEyeTools,
   ensureDataDir: () => ensureDataDir,
+  isAgentSessionActive: () => isAgentSessionActive,
   readBriefing: () => readBriefing,
   readConfig: () => readConfig,
+  sessionLockPath: () => sessionLockPath,
+  touchSessionLock: () => touchSessionLock,
   updateConfig: () => updateConfig,
   writeConfig: () => writeConfig
 });
@@ -1023,6 +1026,25 @@ function readBriefing() {
     return null;
   }
 }
+var SESSION_LOCK_FILE = "agent-session.lock";
+var DEFAULT_SESSION_TIMEOUT_MS = 5 * 6e4;
+function sessionLockPath() {
+  return (0, import_node_path.join)(DEFAULT_DATA_DIR, SESSION_LOCK_FILE);
+}
+function touchSessionLock() {
+  ensureDataDir();
+  (0, import_node_fs.writeFileSync)(sessionLockPath(), Date.now().toString(), "utf-8");
+}
+function isAgentSessionActive(timeoutMs = DEFAULT_SESSION_TIMEOUT_MS) {
+  try {
+    const raw = (0, import_node_fs.readFileSync)(sessionLockPath(), "utf-8").trim();
+    const lockTime = Number(raw);
+    if (!Number.isFinite(lockTime)) return false;
+    return Date.now() - lockTime < timeoutMs;
+  } catch {
+    return false;
+  }
+}
 
 // src/tools/index.ts
 var PRICE_CHANGE_RANGE = {
@@ -1037,6 +1059,7 @@ function createTractionEyeTools(client) {
       description: "Call this FIRST on every trading session tick. Returns market candidates collected from multiple perspectives (volume leaders, trending 5m/1h for catching early growth, most active by transactions, newly created), current portfolio, and strategy performance. Each candidate has tags showing how it was discovered \u2014 a pool appearing in several categories simultaneously may indicate a stronger signal. The briefing also includes top-lists sorted by volume, liquidity, FDV, transaction count, and price gainers (1h, 24h) \u2014 use these different views to compare, form hypotheses about what makes a good candidate, and verify your assumptions across sessions.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => {
+        touchSessionLock();
         const briefing = readBriefing();
         if (!briefing) return { error: "No briefing file found. Is the daemon running?" };
         return briefing;
@@ -1065,6 +1088,7 @@ function createTractionEyeTools(client) {
         additionalProperties: false
       },
       handler: async (args) => {
+        touchSessionLock();
         const poolAddress = args["poolAddress"];
         const timeframe = args["ohlcvTimeframe"] ?? "hour";
         const limit = args["ohlcvLimit"] ?? 30;
@@ -1404,8 +1428,11 @@ async function pollOperationStatus(client, operationId) {
   configPath,
   createTractionEyeTools,
   ensureDataDir,
+  isAgentSessionActive,
   readBriefing,
   readConfig,
+  sessionLockPath,
+  touchSessionLock,
   updateConfig,
   writeConfig
 });

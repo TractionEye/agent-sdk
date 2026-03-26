@@ -38,11 +38,14 @@ export {
   DEFAULT_DATA_DIR,
   configPath,
   briefingPath,
+  sessionLockPath,
   readConfig,
   writeConfig,
   updateConfig,
   readBriefing,
   ensureDataDir,
+  touchSessionLock,
+  isAgentSessionActive,
 } from './config.js';
 export type { DaemonConfig, TpSlConfig, TpSlDefaults } from './config.js';
 
