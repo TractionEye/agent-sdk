@@ -1,4 +1,4 @@
-/** Priority levels for GeckoTerminal API requests. */
+/** Priority levels for API requests (used by both GeckoTerminal and DexScreener clients). */
 declare enum RequestPriority {
     /** P0 — TP/SL monitoring (60% budget) */
     Critical = 0,
@@ -14,6 +14,7 @@ declare enum RequestPriority {
  * to stay within real-world limits across daemon + agent processes sharing one IP.
  */
 declare class RateLimiter {
+    readonly name: string;
     private tokens;
     private readonly maxTokens;
     private readonly windowMs;
@@ -22,7 +23,7 @@ declare class RateLimiter {
     private lastRequest;
     private queue;
     private draining;
-    constructor(maxTokens?: number, windowMs?: number, minIntervalMs?: number);
+    constructor(name?: string, maxTokens?: number, windowMs?: number, minIntervalMs?: number);
     /** Schedule a request with a given priority. Returns the result promise. */
     schedule<T>(priority: RequestPriority, execute: () => Promise<T>): Promise<T>;
     private refill;
@@ -101,30 +102,42 @@ type OhlcvResponse = {
 };
 type OhlcvTimeframe = 'day' | 'hour' | 'minute';
 
-/** GeckoTerminal API client for TON network with built-in rate limiting. */
+/**
+ * GeckoTerminal API client — OHLCV candles and trade history only.
+ * Pool discovery, prices, and screening are handled by DexScreenerClient.
+ */
 declare class GeckoTerminalClient {
     private readonly limiter;
     constructor(limiter: RateLimiter);
-    /** Fetch pools for TON network (paginated, up to 20 per page). */
-    getPools(page?: number, sort?: 'h24_volume_usd_desc' | 'h24_tx_count_desc', priority?: RequestPriority): Promise<PoolInfo[]>;
-    /** Trending pools on TON. */
-    getTrendingPools(duration?: '5m' | '1h' | '6h' | '24h', priority?: RequestPriority): Promise<PoolInfo[]>;
-    /** Newly created pools on TON. */
-    getNewPools(priority?: RequestPriority): Promise<PoolInfo[]>;
-    /** Search pools by keyword, filtered to TON network. */
-    searchPools(query: string, priority?: RequestPriority): Promise<PoolInfo[]>;
-    /** Fetch details for multiple pools (up to 30 addresses, comma-separated). */
-    getPoolsMulti(addresses: string[], priority?: RequestPriority): Promise<PoolInfo[]>;
     /** Fetch recent trades for a pool. */
     getPoolTrades(poolAddress: string, options?: {
         tradeVolumeInUsdGreaterThan?: number;
     }, priority?: RequestPriority): Promise<TradeInfo[]>;
-    /** Fetch OHLCV candles for a pool. */
+    /** Fetch OHLCV candles for a pool (retries with cache-bust on empty response). */
     getPoolOhlcv(poolAddress: string, timeframe?: OhlcvTimeframe, limit?: number, priority?: RequestPriority): Promise<OhlcvResponse>;
-    /** Fetch prices for multiple tokens (up to 30 addresses). P0 priority by default. */
+    private get;
+}
+
+/** DexScreener API client for TON network with built-in rate limiting. */
+declare class DexScreenerClient {
+    private readonly limiter;
+    constructor(limiter: RateLimiter);
+    /** Search pools by keyword, filtered to TON chain. */
+    searchPools(query: string, priority?: RequestPriority): Promise<PoolInfo[]>;
+    /** Fetch all pairs for a token address on TON. */
+    getTokenPairs(tokenAddress: string, priority?: RequestPriority): Promise<PoolInfo[]>;
+    /** Fetch a single pair by address on TON. */
+    getPair(pairAddress: string, priority?: RequestPriority): Promise<PoolInfo | null>;
+    /** Fetch price for a single token (picks highest-liquidity pair). */
+    getTokenPrice(tokenAddress: string, priority?: RequestPriority): Promise<TokenPrice>;
+    /** Fetch prices for multiple tokens sequentially. */
     getTokenPrices(addresses: string[], priority?: RequestPriority): Promise<TokenPrice[]>;
-    /** Fetch a single token's price. */
-    getTokenPrice(address: string, priority?: RequestPriority): Promise<TokenPrice>;
+    /** Top pools on TON sorted by 24h volume. */
+    getTopPools(priority?: RequestPriority): Promise<PoolInfo[]>;
+    /** Trending (boosted) pools on TON. Falls back to getTopPools if none found. */
+    getTrendingPools(priority?: RequestPriority): Promise<PoolInfo[]>;
+    /** Newly profiled tokens on TON. */
+    getNewPools(priority?: RequestPriority): Promise<PoolInfo[]>;
     private get;
 }
 
@@ -192,10 +205,10 @@ type ScreeningConfig = {
     sources?: ScreeningSource[];
 };
 
-/** Screens TON pools via GeckoTerminal and applies client-side filters. */
+/** Screens TON pools via DexScreener and applies client-side filters. */
 declare class TokenScreener {
-    private readonly gecko;
-    constructor(gecko: GeckoTerminalClient);
+    private readonly dex;
+    constructor(dex: DexScreenerClient);
     /** Run a screening pass: fetch pools from configured sources & filter. */
     screen(config: ScreeningConfig): Promise<PoolInfo[]>;
     /** Search pools by keyword and apply filter. */
@@ -251,7 +264,7 @@ type PositionEvent = {
 type TradeExecutor = (tokenAddress: string, action: 'BUY' | 'SELL', sellPercent: number) => Promise<void>;
 type PositionEventHandler = (event: PositionEvent) => void;
 /**
- * Monitors open positions and auto-triggers TP/SL via GeckoTerminal price feeds.
+ * Monitors open positions and auto-triggers TP/SL via DexScreener price feeds.
  *
  * Usage:
  * 1. Create instance with config
@@ -260,7 +273,7 @@ type PositionEventHandler = (event: PositionEvent) => void;
  * 4. Call stop() to halt monitoring
  */
 declare class PositionManager {
-    private readonly gecko;
+    private readonly dex;
     private readonly config;
     private readonly executeTradeCallback;
     private readonly onEvent?;
@@ -268,7 +281,7 @@ declare class PositionManager {
     private positions;
     private timer;
     private running;
-    constructor(gecko: GeckoTerminalClient, config: PositionConfig, executeTradeCallback: TradeExecutor, onEvent?: PositionEventHandler | undefined, monitorConfig?: MonitorConfig | undefined);
+    constructor(dex: DexScreenerClient, config: PositionConfig, executeTradeCallback: TradeExecutor, onEvent?: PositionEventHandler | undefined, monitorConfig?: MonitorConfig | undefined);
     /** Add a position to be monitored. */
     addPosition(pos: TrackedPosition): void;
     /** Remove a position from monitoring. */
@@ -433,11 +446,17 @@ declare class TractionEyeClient {
     readonly strategyName: string;
     /** In-memory map: operationId → execution context (swapType, tokenAddress). */
     private readonly _opContext;
-    /** GeckoTerminal client for market data (built-in, no API key needed). */
+    /** GeckoTerminal client — OHLCV candles and trade history only. */
     readonly gecko: GeckoTerminalClient;
+    /** DexScreener client — pool discovery, prices, screening. */
+    readonly dex: DexScreenerClient;
     /** Token screener for filtering pools by criteria. */
     readonly screener: TokenScreener;
-    /** Rate limiter for GeckoTerminal API (30 req/60s). */
+    /** Rate limiter for GeckoTerminal API (30 req/60s, OHLCV + trades only). */
+    readonly geckoLimiter: RateLimiter;
+    /** Rate limiter for DexScreener API (~60 req/60s). */
+    readonly dexLimiter: RateLimiter;
+    /** @deprecated Use geckoLimiter. Kept for backward compatibility with daemon. */
     readonly limiter: RateLimiter;
     /** Simulation engine (only active when dryRun=true). */
     readonly simulator: Simulator | null;
@@ -503,6 +522,73 @@ type Tool = {
 };
 declare function createTractionEyeTools(client: TractionEyeClient): Tool[];
 
+type DexPair = {
+    chainId: string;
+    dexId: string;
+    url: string;
+    pairAddress: string;
+    baseToken: {
+        address: string;
+        name: string;
+        symbol: string;
+    };
+    quoteToken: {
+        address: string;
+        name: string;
+        symbol: string;
+    };
+    priceNative: string;
+    priceUsd: string;
+    txns: {
+        m5: {
+            buys: number;
+            sells: number;
+        };
+        h1: {
+            buys: number;
+            sells: number;
+        };
+        h6: {
+            buys: number;
+            sells: number;
+        };
+        h24: {
+            buys: number;
+            sells: number;
+        };
+    };
+    volume: {
+        m5: number;
+        h1: number;
+        h6: number;
+        h24: number;
+    };
+    priceChange: {
+        m5: number;
+        h1: number;
+        h6: number;
+        h24: number;
+    };
+    liquidity?: {
+        usd: number;
+        base: number;
+        quote: number;
+    };
+    fdv?: number;
+    marketCap?: number;
+    pairCreatedAt?: number;
+    info?: {
+        imageUrl?: string;
+        websites?: Array<{
+            url: string;
+        }>;
+        socials?: Array<{
+            type: string;
+            url: string;
+        }>;
+    };
+};
+
 /** Default data directory for TractionEye config and briefing files. */
 declare const DEFAULT_DATA_DIR: string;
 /** Path to the unified config file. */
@@ -549,4 +635,4 @@ declare function touchSessionLock(): void;
 /** Check if an agent session is active (lock file exists and is recent). */
 declare function isAgentSessionActive(timeoutMs?: number): boolean;
 
-export { type AvailableToken, DEFAULT_DATA_DIR, type DaemonConfig, GeckoTerminalClient, type MonitorConfig, type OhlcvCandle, type OhlcvMeta, type OhlcvResponse, type OhlcvTimeframe, type OperationStatus, type OperationStatusType, type PoolInfo, type PortfolioSummary, type PositionConfig, type PositionEvent, PositionManager, RateLimiter, RequestPriority, type ScreeningConfig, type ScreeningFilter, type ScreeningSource, type SimulationResult, Simulator, type StrategySummary, type TokenPrice, TokenScreener, type TokenSummary, type TpSlConfig, type TpSlDefaults, type TrackedPosition, TractionEyeClient, type TractionEyeClientConfig, TractionEyeHttpError, type TradeAction, type TradeExecution, type TradeExecutionRequest, type TradeInfo, type TradePreview, type TradePreviewRequest, type ValidationOutcome, type VirtualTrade, briefingPath, configPath, createTractionEyeTools, ensureDataDir, isAgentSessionActive, readBriefing, readConfig, sessionLockPath, touchSessionLock, updateConfig, writeConfig };
+export { type AvailableToken, DEFAULT_DATA_DIR, type DaemonConfig, type DexPair, DexScreenerClient, GeckoTerminalClient, type MonitorConfig, type OhlcvCandle, type OhlcvMeta, type OhlcvResponse, type OhlcvTimeframe, type OperationStatus, type OperationStatusType, type PoolInfo, type PortfolioSummary, type PositionConfig, type PositionEvent, PositionManager, RateLimiter, RequestPriority, type ScreeningConfig, type ScreeningFilter, type ScreeningSource, type SimulationResult, Simulator, type StrategySummary, type TokenPrice, TokenScreener, type TokenSummary, type TpSlConfig, type TpSlDefaults, type TrackedPosition, TractionEyeClient, type TractionEyeClientConfig, TractionEyeHttpError, type TradeAction, type TradeExecution, type TradeExecutionRequest, type TradeInfo, type TradePreview, type TradePreviewRequest, type ValidationOutcome, type VirtualTrade, briefingPath, configPath, createTractionEyeTools, ensureDataDir, isAgentSessionActive, readBriefing, readConfig, sessionLockPath, touchSessionLock, updateConfig, writeConfig };

@@ -312,7 +312,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_screen_tokens',
       description:
-        'Screen TON tokens/pools by criteria: liquidity, FDV, market cap, volume, price change (5m to 24h), transactions, buy/sell ratio, unique buyers. Returns matching pools from GeckoTerminal. Use for ad-hoc screening beyond the daemon briefing.',
+        'Screen TON tokens/pools by criteria: liquidity, FDV, market cap, volume, price change (5m to 24h), transactions, buy/sell ratio, unique buyers. Returns matching pools from DEX market data. Use for ad-hoc screening beyond the daemon briefing.',
       parameters: {
         type: 'object',
         properties: {
@@ -396,7 +396,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_get_token_price',
       description:
-        'Get current USD price for a token by its contract address via GeckoTerminal. Use for quick price checks.',
+        'Get current USD price for a token by its contract address. Use for quick price checks.',
       parameters: {
         type: 'object',
         properties: {

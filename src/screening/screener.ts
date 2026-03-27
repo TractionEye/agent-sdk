@@ -1,12 +1,12 @@
-import type { GeckoTerminalClient } from '../gecko/client.js';
+import type { DexScreenerClient } from '../dexscreener/client.js';
 import type { PoolInfo } from '../gecko/types.js';
 import type { ScreeningConfig, ScreeningFilter, ScreeningSource } from './types.js';
 
 const ALL_SOURCES: ScreeningSource[] = ['pools', 'trending', 'new_pools'];
 
-/** Screens TON pools via GeckoTerminal and applies client-side filters. */
+/** Screens TON pools via DexScreener and applies client-side filters. */
 export class TokenScreener {
-  constructor(private readonly gecko: GeckoTerminalClient) {}
+  constructor(private readonly dex: DexScreenerClient) {}
 
   /** Run a screening pass: fetch pools from configured sources & filter. */
   async screen(config: ScreeningConfig): Promise<PoolInfo[]> {
@@ -28,7 +28,7 @@ export class TokenScreener {
 
   /** Search pools by keyword and apply filter. */
   async search(query: string, filter: ScreeningFilter): Promise<PoolInfo[]> {
-    const pools = await this.gecko.searchPools(query);
+    const pools = await this.dex.searchPools(query);
     return pools.filter((p) => matchesFilter(p, filter));
   }
 
@@ -37,11 +37,11 @@ export class TokenScreener {
       sources.map((s) => {
         switch (s) {
           case 'pools':
-            return this.gecko.getPools();
+            return this.dex.getTopPools();
           case 'trending':
-            return this.gecko.getTrendingPools();
+            return this.dex.getTrendingPools();
           case 'new_pools':
-            return this.gecko.getNewPools();
+            return this.dex.getNewPools();
         }
       }),
     );

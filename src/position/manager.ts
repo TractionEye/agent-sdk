@@ -1,4 +1,4 @@
-import type { GeckoTerminalClient } from '../gecko/client.js';
+import type { DexScreenerClient } from '../dexscreener/client.js';
 import type { TokenPrice } from '../gecko/types.js';
 import type {
   MonitorConfig,
@@ -13,7 +13,7 @@ export type TradeExecutor = (tokenAddress: string, action: 'BUY' | 'SELL', sellP
 export type PositionEventHandler = (event: PositionEvent) => void;
 
 /**
- * Monitors open positions and auto-triggers TP/SL via GeckoTerminal price feeds.
+ * Monitors open positions and auto-triggers TP/SL via DexScreener price feeds.
  *
  * Usage:
  * 1. Create instance with config
@@ -27,7 +27,7 @@ export class PositionManager {
   private running = false;
 
   constructor(
-    private readonly gecko: GeckoTerminalClient,
+    private readonly dex: DexScreenerClient,
     private readonly config: PositionConfig,
     private readonly executeTradeCallback: TradeExecutor,
     private readonly onEvent?: PositionEventHandler,
@@ -79,7 +79,7 @@ export class PositionManager {
     const addresses = Array.from(this.positions.keys());
     let prices: TokenPrice[];
     try {
-      prices = await this.gecko.getTokenPrices(addresses);
+      prices = await this.dex.getTokenPrices(addresses);
     } catch {
       // Swallow errors — will retry on next tick
       return;

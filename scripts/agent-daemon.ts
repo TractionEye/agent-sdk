@@ -14,9 +14,7 @@ import { writeFileSync, watchFile } from 'node:fs';
 import { execFile } from 'node:child_process';
 import {
   TractionEyeClient,
-  RateLimiter,
-  GeckoTerminalClient,
-  TokenScreener,
+  DexScreenerClient,
   PositionManager,
   readConfig,
   briefingPath,
@@ -45,10 +43,9 @@ const JUNK_FILTER: ScreeningFilter = {
 
 let config: DaemonConfig;
 let client: TractionEyeClient | null = null;
-let gecko: GeckoTerminalClient;
+let dex: DexScreenerClient;
 let screener: TokenScreener;
 let positionManager: PositionManager | null = null;
-let limiter: RateLimiter;
 let screeningTimer: ReturnType<typeof setInterval> | null = null;
 let lastExecutionResult: { operationId: string; amountNano: string } | null = null;
 
@@ -83,8 +80,7 @@ async function startup(): Promise<void> {
     process.exit(1);
   }
 
-  limiter = client.limiter;
-  gecko = client.gecko;
+  dex = client.dex;
   screener = client.screener;
 
   // Start TP/SL monitoring
@@ -152,7 +148,7 @@ function startTpSlMonitor(): void {
   };
 
   positionManager = new PositionManager(
-    gecko,
+    dex,
     posConfig,
     executor,
     onEvent,
@@ -173,7 +169,7 @@ async function loadPositions(): Promise<void> {
     for (const t of portfolio.tokens) {
       if (t.entryPriceTon == null) continue;
       try {
-        const tokenPrice = await gecko.getTokenPrice(t.address);
+        const tokenPrice = await dex.getTokenPrice(t.address);
         if (tokenPrice.priceUsd == null) continue;
         const currentValueTon = Number(t.currentValueTon ?? 0);
         const entryPriceTon = Number(t.entryPriceTon);
@@ -272,27 +268,21 @@ async function runScreening(): Promise<void> {
   }
 
   try {
-    // Fetch pools from 5 sources for a comprehensive market view
+    // Fetch pools from 3 DexScreener sources (was 5 GeckoTerminal calls)
     const [
-      poolsByVolume,
-      poolsByTxCount,
-      trending5m,
-      trending1h,
+      topPools,
+      trendingPools,
       newPools,
     ] = await Promise.all([
-      gecko.getPools(1, 'h24_volume_usd_desc'),
-      gecko.getPools(1, 'h24_tx_count_desc'),
-      gecko.getTrendingPools('5m'),
-      gecko.getTrendingPools('1h'),
-      gecko.getNewPools(),
+      dex.getTopPools(),
+      dex.getTrendingPools(),
+      dex.getNewPools(),
     ]);
 
     // Tag each pool by source, then deduplicate — merge tags on collision
     const taggedSources: Array<[PoolInfo[], string]> = [
-      [poolsByVolume, 'top_volume'],
-      [poolsByTxCount, 'top_tx_count'],
-      [trending5m, 'trending_5m'],
-      [trending1h, 'trending_1h'],
+      [topPools, 'top_volume'],
+      [trendingPools, 'trending'],
       [newPools, 'new'],
     ];
 
@@ -313,7 +303,8 @@ async function runScreening(): Promise<void> {
     const filtered = [...poolMap.values()].filter((p) => {
       if (p.reserveInUsd < (JUNK_FILTER.minLiquidityUsd ?? 0)) return false;
       if (p.volume24hUsd <= 0) return false;
-      if (p.lockedLiquidityPercent === 0) return false;
+      // lockedLiquidityPercent: only reject if explicitly 0 (not null — DexScreener doesn't provide this field)
+      if (p.lockedLiquidityPercent != null && p.lockedLiquidityPercent === 0) return false;
       if (isUsdtPool(p.name)) return false;
       return true;
     });

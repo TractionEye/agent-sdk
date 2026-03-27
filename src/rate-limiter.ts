@@ -1,4 +1,4 @@
-/** Priority levels for GeckoTerminal API requests. */
+/** Priority levels for API requests (used by both GeckoTerminal and DexScreener clients). */
 export enum RequestPriority {
   /** P0 — TP/SL monitoring (60% budget) */
   Critical = 0,
@@ -22,6 +22,7 @@ type QueueEntry<T> = {
  * to stay within real-world limits across daemon + agent processes sharing one IP.
  */
 export class RateLimiter {
+  readonly name: string;
   private tokens: number;
   private readonly maxTokens: number;
   private readonly windowMs: number;
@@ -31,7 +32,8 @@ export class RateLimiter {
   private queue: QueueEntry<unknown>[] = [];
   private draining = false;
 
-  constructor(maxTokens = 5, windowMs = 60_000, minIntervalMs = 2_000) {
+  constructor(name = 'default', maxTokens = 5, windowMs = 60_000, minIntervalMs = 2_000) {
+    this.name = name;
     this.maxTokens = maxTokens;
     this.tokens = maxTokens;
     this.windowMs = windowMs;

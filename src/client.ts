@@ -3,6 +3,7 @@ import { TractionEyeHttpClient, TractionEyeHttpError } from './http/client.js';
 import { logMethodCall } from './logger.js';
 import { RateLimiter } from './rate-limiter.js';
 import { GeckoTerminalClient } from './gecko/client.js';
+import { DexScreenerClient } from './dexscreener/client.js';
 import { TokenScreener } from './screening/screener.js';
 import { PositionManager } from './position/manager.js';
 import { Simulator } from './simulation/simulator.js';
@@ -129,11 +130,17 @@ export class TractionEyeClient {
   /** In-memory map: operationId → execution context (swapType, tokenAddress). */
   private readonly _opContext = new Map<string, OperationContext>();
 
-  /** GeckoTerminal client for market data (built-in, no API key needed). */
+  /** GeckoTerminal client — OHLCV candles and trade history only. */
   readonly gecko: GeckoTerminalClient;
+  /** DexScreener client — pool discovery, prices, screening. */
+  readonly dex: DexScreenerClient;
   /** Token screener for filtering pools by criteria. */
   readonly screener: TokenScreener;
-  /** Rate limiter for GeckoTerminal API (30 req/60s). */
+  /** Rate limiter for GeckoTerminal API (30 req/60s, OHLCV + trades only). */
+  readonly geckoLimiter: RateLimiter;
+  /** Rate limiter for DexScreener API (~60 req/60s). */
+  readonly dexLimiter: RateLimiter;
+  /** @deprecated Use geckoLimiter. Kept for backward compatibility with daemon. */
   readonly limiter: RateLimiter;
   /** Simulation engine (only active when dryRun=true). */
   readonly simulator: Simulator | null;
@@ -145,12 +152,16 @@ export class TractionEyeClient {
     private readonly http: TractionEyeHttpClient,
     public readonly strategyId: string,
     public readonly strategyName: string,
-    limiter: RateLimiter,
+    geckoLimiter: RateLimiter,
+    dexLimiter: RateLimiter,
     dryRun: boolean,
   ) {
-    this.limiter = limiter;
-    this.gecko = new GeckoTerminalClient(limiter);
-    this.screener = new TokenScreener(this.gecko);
+    this.geckoLimiter = geckoLimiter;
+    this.dexLimiter = dexLimiter;
+    this.limiter = geckoLimiter; // backward compat
+    this.gecko = new GeckoTerminalClient(geckoLimiter);
+    this.dex = new DexScreenerClient(dexLimiter);
+    this.screener = new TokenScreener(this.dex);
     this.dryRun = dryRun;
     this.simulator = dryRun ? new Simulator() : null;
   }
@@ -161,12 +172,14 @@ export class TractionEyeClient {
     const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
     const http = new TractionEyeHttpClient(baseUrl, config.agentToken);
     const strategy = await http.get<AgentStrategyResponse>('/agent/strategy');
-    const limiter = new RateLimiter();
+    const geckoLimiter = new RateLimiter('gecko', 5, 60_000, 2_000);
+    const dexLimiter = new RateLimiter('dexscreener', 10, 60_000, 1_000);
     return new TractionEyeClient(
       http,
       String(strategy.strategy_id),
       strategy.strategy_name,
-      limiter,
+      geckoLimiter,
+      dexLimiter,
       config.dryRun ?? false,
     );
   }
@@ -388,7 +401,7 @@ export class TractionEyeClient {
     };
   }
 
-  // ── Market analytics (GeckoTerminal) ─────────────────────────────────────
+  // ── Market analytics (DexScreener + GeckoTerminal OHLCV) ─────────────────
 
   /** Screen tokens/pools by filter criteria. */
   async screenTokens(config: ScreeningConfig): Promise<PoolInfo[]> {
@@ -405,19 +418,19 @@ export class TractionEyeClient {
   /** Get trending pools on TON. */
   async getTrendingPools(): Promise<PoolInfo[]> {
     logMethodCall('getTrendingPools');
-    return this.gecko.getTrendingPools();
+    return this.dex.getTrendingPools();
   }
 
   /** Get newly created pools on TON. */
   async getNewPools(): Promise<PoolInfo[]> {
     logMethodCall('getNewPools');
-    return this.gecko.getNewPools();
+    return this.dex.getNewPools();
   }
 
   /** Get current USD price for a token by address. */
   async getTokenPriceUsd(tokenAddress: string): Promise<number | null> {
     logMethodCall('getTokenPriceUsd', { tokenAddress });
-    const tp = await this.gecko.getTokenPrice(tokenAddress);
+    const tp = await this.dex.getTokenPrice(tokenAddress);
     return tp.priceUsd;
   }
 
@@ -461,7 +474,7 @@ export class TractionEyeClient {
     };
 
     this.positionManager = new PositionManager(
-      this.gecko,
+      this.dex,
       positionConfig,
       executor,
       onEvent,
@@ -472,7 +485,7 @@ export class TractionEyeClient {
     const portfolio = await this.getPortfolio();
     for (const t of portfolio.tokens) {
       if (t.entryPriceTon == null) continue;
-      const tokenPrice = await this.gecko.getTokenPrice(t.address);
+      const tokenPrice = await this.dex.getTokenPrice(t.address);
       if (tokenPrice.priceUsd == null) continue;
       const currentValueTon = Number(t.currentValueTon ?? 0);
       const entryPriceTon = Number(t.entryPriceTon);

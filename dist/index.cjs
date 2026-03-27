@@ -21,6 +21,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   DEFAULT_DATA_DIR: () => DEFAULT_DATA_DIR,
+  DexScreenerClient: () => DexScreenerClient,
   GeckoTerminalClient: () => GeckoTerminalClient,
   PositionManager: () => PositionManager,
   RateLimiter: () => RateLimiter,
@@ -113,10 +114,11 @@ var RequestPriority = /* @__PURE__ */ ((RequestPriority2) => {
   return RequestPriority2;
 })(RequestPriority || {});
 var RateLimiter = class {
-  constructor(maxTokens = 5, windowMs = 6e4, minIntervalMs = 2e3) {
+  constructor(name = "default", maxTokens = 5, windowMs = 6e4, minIntervalMs = 2e3) {
     this.lastRequest = 0;
     this.queue = [];
     this.draining = false;
+    this.name = name;
     this.maxTokens = maxTokens;
     this.tokens = maxTokens;
     this.windowMs = windowMs;
@@ -177,79 +179,7 @@ var GeckoTerminalClient = class {
   constructor(limiter) {
     this.limiter = limiter;
   }
-  // ---------- Pool endpoints ----------
-  /** Fetch pools for TON network (paginated, up to 20 per page). */
-  async getPools(page = 1, sort = "h24_volume_usd_desc", priority = 2 /* Low */) {
-    const data = await this.get(
-      `/networks/${NETWORK}/pools?page=${page}&sort=${sort}`,
-      priority
-    );
-    return data.data.map(mapPool);
-  }
-  /** Trending pools on TON. */
-  async getTrendingPools(duration = "24h", priority = 2 /* Low */) {
-    const data = await this.get(
-      `/networks/${NETWORK}/trending_pools?duration=${duration}`,
-      priority
-    );
-    return data.data.map(mapPool);
-  }
-  /** Newly created pools on TON. */
-  async getNewPools(priority = 2 /* Low */) {
-    const data = await this.get(
-      `/networks/${NETWORK}/new_pools`,
-      priority
-    );
-    return data.data.map(mapPool);
-  }
-  /** Search pools by keyword, filtered to TON network. */
-  async searchPools(query, priority = 2 /* Low */) {
-    const data = await this.get(
-      `/search/pools?query=${encodeURIComponent(query)}&network=${NETWORK}`,
-      priority
-    );
-    return data.data.map((p) => ({
-      poolAddress: p.attributes.address,
-      name: p.attributes.name,
-      baseTokenPriceUsd: "0",
-      reserveInUsd: num(p.attributes.reserve_in_usd),
-      fdvUsd: null,
-      marketCapUsd: null,
-      lockedLiquidityPercent: null,
-      volume24hUsd: num(p.attributes.volume_usd.h24),
-      volume6hUsd: 0,
-      volume1hUsd: 0,
-      priceChange5m: 0,
-      priceChange15m: 0,
-      priceChange30m: 0,
-      priceChange1h: 0,
-      priceChange6h: 0,
-      priceChange24h: num(p.attributes.price_change_percentage.h24),
-      transactions24h: 0,
-      buys24h: 0,
-      sells24h: 0,
-      uniqueBuyers1h: 0,
-      uniqueBuyers6h: 0,
-      uniqueBuyers24h: 0,
-      uniqueSellers1h: 0,
-      uniqueSellers6h: 0,
-      uniqueSellers24h: 0,
-      buySellRatio: 0,
-      createdAt: "",
-      tags: []
-    }));
-  }
-  /** Fetch details for multiple pools (up to 30 addresses, comma-separated). */
-  async getPoolsMulti(addresses, priority = 2 /* Low */) {
-    if (addresses.length === 0) return [];
-    const joined = addresses.slice(0, 30).join(",");
-    const data = await this.get(
-      `/networks/${NETWORK}/pools/multi/${joined}`,
-      priority
-    );
-    return data.data.map(mapPool);
-  }
-  // ---------- Trades & OHLCV endpoints ----------
+  // ---------- Trades & OHLCV ----------
   /** Fetch recent trades for a pool. */
   async getPoolTrades(poolAddress, options, priority = 1 /* High */) {
     let path = `/networks/${NETWORK}/pools/${poolAddress}/trades`;
@@ -268,52 +198,37 @@ var GeckoTerminalClient = class {
       priceToInUsd: num(t.attributes.price_to_in_usd)
     }));
   }
-  /** Fetch OHLCV candles for a pool. */
+  /** Fetch OHLCV candles for a pool (retries with cache-bust on empty response). */
   async getPoolOhlcv(poolAddress, timeframe = "day", limit = 30, priority = 1 /* High */) {
-    const data = await this.get(
-      `/networks/${NETWORK}/pools/${poolAddress}/ohlcv/${timeframe}?limit=${limit}`,
-      priority
-    );
-    const candles = data.data.attributes.ohlcv_list.map(
-      ([timestamp, open, high, low, close, volume]) => ({
-        timestamp,
-        open,
-        high,
-        low,
-        close,
-        volume
-      })
-    );
-    return { candles, meta: data.meta };
-  }
-  // ---------- Token endpoints ----------
-  /** Fetch prices for multiple tokens (up to 30 addresses). P0 priority by default. */
-  async getTokenPrices(addresses, priority = 0 /* Critical */) {
-    if (addresses.length === 0) return [];
-    const joined = addresses.slice(0, 30).join(",");
-    const data = await this.get(
-      `/networks/${NETWORK}/tokens/multi/${joined}`,
-      priority
-    );
-    return data.data.map((t) => ({
-      address: t.attributes.address,
-      priceUsd: t.attributes.price_usd != null ? num(t.attributes.price_usd) : null,
-      symbol: t.attributes.symbol
-    }));
-  }
-  /** Fetch a single token's price. */
-  async getTokenPrice(address, priority = 0 /* Critical */) {
-    const data = await this.get(
-      `/networks/${NETWORK}/tokens/${address}`,
-      priority
-    );
-    const t = data.data[0];
-    if (!t) throw new Error(`Token not found: ${address}`);
-    return {
-      address: t.attributes.address,
-      priceUsd: t.attributes.price_usd != null ? num(t.attributes.price_usd) : null,
-      symbol: t.attributes.symbol
-    };
+    const basePath = `/networks/${NETWORK}/pools/${poolAddress}/ohlcv/${timeframe}?limit=${limit}`;
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const path = attempt === 0 ? basePath : `${basePath}&_cb=${Date.now()}`;
+      const data = await this.get(path, priority);
+      const ohlcvList = data.data.attributes.ohlcv_list;
+      if (ohlcvList.length === 0 && attempt < maxAttempts - 1) {
+        console.warn(
+          `[gecko] OHLCV empty for ${poolAddress}, retrying with cache-bust (attempt ${attempt + 1}/${maxAttempts})`
+        );
+        await new Promise((r) => setTimeout(r, 3e3));
+        continue;
+      }
+      if (ohlcvList.length === 0) {
+        console.warn(`[gecko] OHLCV still empty for ${poolAddress} after ${maxAttempts} attempts`);
+      }
+      const candles = ohlcvList.map(
+        ([timestamp, open, high, low, close, volume]) => ({
+          timestamp,
+          open,
+          high,
+          low,
+          close,
+          volume
+        })
+      );
+      return { candles, meta: data.meta };
+    }
+    return { candles: [], meta: {} };
   }
   // ---------- Internal ----------
   get(path, priority) {
@@ -340,44 +255,156 @@ function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
-function numOrNull(v) {
-  if (v == null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-function mapPool(p) {
-  const a = p.attributes;
-  const buys = a.transactions.h24.buys;
-  const sells = a.transactions.h24.sells;
+
+// src/dexscreener/client.ts
+var DEX_BASE = "https://api.dexscreener.com";
+var DexScreenerClient = class {
+  constructor(limiter) {
+    this.limiter = limiter;
+  }
+  // ---------- Pool search ----------
+  /** Search pools by keyword, filtered to TON chain. */
+  async searchPools(query, priority = 2 /* Low */) {
+    const data = await this.get(
+      `/latest/dex/search?q=${encodeURIComponent(query)}`,
+      priority
+    );
+    if (!data.pairs) return [];
+    return data.pairs.filter((p) => p.chainId === "ton").map(mapPairToPoolInfo);
+  }
+  /** Fetch all pairs for a token address on TON. */
+  async getTokenPairs(tokenAddress, priority = 2 /* Low */) {
+    const data = await this.get(
+      `/latest/dex/tokens/${tokenAddress}`,
+      priority
+    );
+    if (!data.pairs) return [];
+    return data.pairs.filter((p) => p.chainId === "ton").map(mapPairToPoolInfo);
+  }
+  /** Fetch a single pair by address on TON. */
+  async getPair(pairAddress, priority = 2 /* Low */) {
+    const data = await this.get(
+      `/latest/dex/pairs/ton/${pairAddress}`,
+      priority
+    );
+    if (!data.pair) return null;
+    return mapPairToPoolInfo(data.pair);
+  }
+  // ---------- Token price ----------
+  /** Fetch price for a single token (picks highest-liquidity pair). */
+  async getTokenPrice(tokenAddress, priority = 0 /* Critical */) {
+    const pools = await this.getTokenPairs(tokenAddress, priority);
+    if (pools.length === 0) {
+      return { address: tokenAddress, priceUsd: null, symbol: "" };
+    }
+    const best = pools.reduce((a, b) => b.reserveInUsd > a.reserveInUsd ? b : a);
+    const priceNum = Number(best.baseTokenPriceUsd);
+    return {
+      address: tokenAddress,
+      priceUsd: Number.isFinite(priceNum) ? priceNum : null,
+      symbol: best.name.split(" / ")[0] ?? ""
+    };
+  }
+  /** Fetch prices for multiple tokens sequentially. */
+  async getTokenPrices(addresses, priority = 0 /* Critical */) {
+    const results = [];
+    for (const addr of addresses) {
+      results.push(await this.getTokenPrice(addr, priority));
+    }
+    return results;
+  }
+  // ---------- Discovery ----------
+  /** Top pools on TON sorted by 24h volume. */
+  async getTopPools(priority = 2 /* Low */) {
+    const data = await this.get(
+      `/latest/dex/search?q=TON`,
+      priority
+    );
+    if (!data.pairs) return [];
+    return data.pairs.filter((p) => p.chainId === "ton").sort((a, b) => (b.volume?.h24 ?? 0) - (a.volume?.h24 ?? 0)).map(mapPairToPoolInfo);
+  }
+  /** Trending (boosted) pools on TON. Falls back to getTopPools if none found. */
+  async getTrendingPools(priority = 2 /* Low */) {
+    const boosts = await this.get(`/token-boosts/latest/v1`, priority);
+    const tonBoosts = (Array.isArray(boosts) ? boosts : []).filter(
+      (b) => b.chainId === "ton"
+    );
+    if (tonBoosts.length === 0) {
+      return this.getTopPools(priority);
+    }
+    const pools = [];
+    for (const boost of tonBoosts.slice(0, 5)) {
+      const tokenPools = await this.getTokenPairs(boost.tokenAddress, priority);
+      if (tokenPools.length > 0) pools.push(tokenPools[0]);
+    }
+    return pools;
+  }
+  /** Newly profiled tokens on TON. */
+  async getNewPools(priority = 2 /* Low */) {
+    const profiles = await this.get(`/token-profiles/latest/v1`, priority);
+    const tonProfiles = (Array.isArray(profiles) ? profiles : []).filter(
+      (p) => p.chainId === "ton"
+    );
+    const pools = [];
+    for (const profile of tonProfiles.slice(0, 5)) {
+      const tokenPools = await this.getTokenPairs(profile.tokenAddress, priority);
+      if (tokenPools.length > 0) pools.push(tokenPools[0]);
+    }
+    return pools;
+  }
+  // ---------- Internal ----------
+  get(path, priority) {
+    return this.limiter.schedule(priority, async () => {
+      const maxRetries = 3;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const res = await fetch(`${DEX_BASE}${path}`, {
+          headers: { Accept: "application/json" }
+        });
+        if (res.status === 429) {
+          const backoffMs = (attempt + 1) * 3e3;
+          console.warn(`[dexscreener] 429 on ${path}, waiting ${backoffMs / 1e3}s (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+        if (!res.ok) throw new Error(`DexScreener HTTP ${res.status}: ${path}`);
+        return res.json();
+      }
+      throw new Error(`DexScreener 429: ${path} (exhausted ${maxRetries} retries)`);
+    });
+  }
+};
+function mapPairToPoolInfo(pair) {
+  const buys = pair.txns?.h24?.buys ?? 0;
+  const sells = pair.txns?.h24?.sells ?? 0;
   return {
-    poolAddress: a.address,
-    name: a.name,
-    baseTokenPriceUsd: a.base_token_price_usd,
-    reserveInUsd: num(a.reserve_in_usd),
-    fdvUsd: numOrNull(a.fdv_usd),
-    marketCapUsd: numOrNull(a.market_cap_usd),
-    lockedLiquidityPercent: numOrNull(a.locked_liquidity_percentage),
-    volume24hUsd: num(a.volume_usd.h24),
-    volume6hUsd: num(a.volume_usd.h6),
-    volume1hUsd: num(a.volume_usd.h1),
-    priceChange5m: num(a.price_change_percentage.m5),
-    priceChange15m: num(a.price_change_percentage.m15),
-    priceChange30m: num(a.price_change_percentage.m30),
-    priceChange1h: num(a.price_change_percentage.h1),
-    priceChange6h: num(a.price_change_percentage.h6),
-    priceChange24h: num(a.price_change_percentage.h24),
+    poolAddress: pair.pairAddress,
+    name: `${pair.baseToken.symbol} / ${pair.quoteToken.symbol}`,
+    baseTokenPriceUsd: pair.priceUsd ?? "0",
+    reserveInUsd: pair.liquidity?.usd ?? 0,
+    fdvUsd: pair.fdv ?? null,
+    marketCapUsd: pair.marketCap ?? null,
+    lockedLiquidityPercent: null,
+    volume24hUsd: pair.volume?.h24 ?? 0,
+    volume6hUsd: pair.volume?.h6 ?? 0,
+    volume1hUsd: pair.volume?.h1 ?? 0,
+    priceChange5m: pair.priceChange?.m5 ?? 0,
+    priceChange15m: 0,
+    priceChange30m: 0,
+    priceChange1h: pair.priceChange?.h1 ?? 0,
+    priceChange6h: pair.priceChange?.h6 ?? 0,
+    priceChange24h: pair.priceChange?.h24 ?? 0,
     transactions24h: buys + sells,
     buys24h: buys,
     sells24h: sells,
-    uniqueBuyers1h: a.transactions.h1.buyers ?? 0,
-    uniqueBuyers6h: a.transactions.h6.buyers ?? 0,
-    uniqueBuyers24h: a.transactions.h24.buyers ?? 0,
-    uniqueSellers1h: a.transactions.h1.sellers ?? 0,
-    uniqueSellers6h: a.transactions.h6.sellers ?? 0,
-    uniqueSellers24h: a.transactions.h24.sellers ?? 0,
+    uniqueBuyers1h: 0,
+    uniqueBuyers6h: 0,
+    uniqueBuyers24h: 0,
+    uniqueSellers1h: 0,
+    uniqueSellers6h: 0,
+    uniqueSellers24h: 0,
     buySellRatio: sells > 0 ? buys / sells : buys > 0 ? Infinity : 0,
-    createdAt: a.pool_created_at,
-    baseTokenId: p.relationships?.base_token?.data?.id,
+    createdAt: pair.pairCreatedAt != null ? new Date(pair.pairCreatedAt).toISOString() : "",
+    baseTokenId: pair.baseToken.address,
     tags: []
   };
 }
@@ -385,8 +412,8 @@ function mapPool(p) {
 // src/screening/screener.ts
 var ALL_SOURCES = ["pools", "trending", "new_pools"];
 var TokenScreener = class {
-  constructor(gecko) {
-    this.gecko = gecko;
+  constructor(dex) {
+    this.dex = dex;
   }
   /** Run a screening pass: fetch pools from configured sources & filter. */
   async screen(config) {
@@ -404,7 +431,7 @@ var TokenScreener = class {
   }
   /** Search pools by keyword and apply filter. */
   async search(query, filter) {
-    const pools = await this.gecko.searchPools(query);
+    const pools = await this.dex.searchPools(query);
     return pools.filter((p) => matchesFilter(p, filter));
   }
   async fetchSources(sources) {
@@ -412,11 +439,11 @@ var TokenScreener = class {
       sources.map((s) => {
         switch (s) {
           case "pools":
-            return this.gecko.getPools();
+            return this.dex.getTopPools();
           case "trending":
-            return this.gecko.getTrendingPools();
+            return this.dex.getTrendingPools();
           case "new_pools":
-            return this.gecko.getNewPools();
+            return this.dex.getNewPools();
         }
       })
     );
@@ -453,8 +480,8 @@ function matchesFilter(pool, f) {
 // src/position/manager.ts
 var DEFAULT_INTERVAL_MS = 1e4;
 var PositionManager = class {
-  constructor(gecko, config, executeTradeCallback, onEvent, monitorConfig) {
-    this.gecko = gecko;
+  constructor(dex, config, executeTradeCallback, onEvent, monitorConfig) {
+    this.dex = dex;
     this.config = config;
     this.executeTradeCallback = executeTradeCallback;
     this.onEvent = onEvent;
@@ -500,7 +527,7 @@ var PositionManager = class {
     const addresses = Array.from(this.positions.keys());
     let prices;
     try {
-      prices = await this.gecko.getTokenPrices(addresses);
+      prices = await this.dex.getTokenPrices(addresses);
     } catch {
       return;
     }
@@ -679,16 +706,19 @@ function toOperationStatus(raw) {
   return "pending";
 }
 var TractionEyeClient = class _TractionEyeClient {
-  constructor(http, strategyId, strategyName, limiter, dryRun) {
+  constructor(http, strategyId, strategyName, geckoLimiter, dexLimiter, dryRun) {
     this.http = http;
     this.strategyId = strategyId;
     this.strategyName = strategyName;
     /** In-memory map: operationId → execution context (swapType, tokenAddress). */
     this._opContext = /* @__PURE__ */ new Map();
     this.positionManager = null;
-    this.limiter = limiter;
-    this.gecko = new GeckoTerminalClient(limiter);
-    this.screener = new TokenScreener(this.gecko);
+    this.geckoLimiter = geckoLimiter;
+    this.dexLimiter = dexLimiter;
+    this.limiter = geckoLimiter;
+    this.gecko = new GeckoTerminalClient(geckoLimiter);
+    this.dex = new DexScreenerClient(dexLimiter);
+    this.screener = new TokenScreener(this.dex);
     this.dryRun = dryRun;
     this.simulator = dryRun ? new Simulator() : null;
   }
@@ -697,12 +727,14 @@ var TractionEyeClient = class _TractionEyeClient {
     const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
     const http = new TractionEyeHttpClient(baseUrl, config.agentToken);
     const strategy = await http.get("/agent/strategy");
-    const limiter = new RateLimiter();
+    const geckoLimiter = new RateLimiter("gecko", 5, 6e4, 2e3);
+    const dexLimiter = new RateLimiter("dexscreener", 10, 6e4, 1e3);
     return new _TractionEyeClient(
       http,
       String(strategy.strategy_id),
       strategy.strategy_name,
-      limiter,
+      geckoLimiter,
+      dexLimiter,
       config.dryRun ?? false
     );
   }
@@ -887,7 +919,7 @@ var TractionEyeClient = class _TractionEyeClient {
       failureReason: res.failure_reason ?? void 0
     };
   }
-  // ── Market analytics (GeckoTerminal) ─────────────────────────────────────
+  // ── Market analytics (DexScreener + GeckoTerminal OHLCV) ─────────────────
   /** Screen tokens/pools by filter criteria. */
   async screenTokens(config) {
     logMethodCall("screenTokens", { sources: config.sources });
@@ -901,17 +933,17 @@ var TractionEyeClient = class _TractionEyeClient {
   /** Get trending pools on TON. */
   async getTrendingPools() {
     logMethodCall("getTrendingPools");
-    return this.gecko.getTrendingPools();
+    return this.dex.getTrendingPools();
   }
   /** Get newly created pools on TON. */
   async getNewPools() {
     logMethodCall("getNewPools");
-    return this.gecko.getNewPools();
+    return this.dex.getNewPools();
   }
   /** Get current USD price for a token by address. */
   async getTokenPriceUsd(tokenAddress) {
     logMethodCall("getTokenPriceUsd", { tokenAddress });
-    const tp = await this.gecko.getTokenPrice(tokenAddress);
+    const tp = await this.dex.getTokenPrice(tokenAddress);
     return tp.priceUsd;
   }
   // ── Position management (TP/SL monitoring) ───────────────────────────────
@@ -942,7 +974,7 @@ var TractionEyeClient = class _TractionEyeClient {
       });
     };
     this.positionManager = new PositionManager(
-      this.gecko,
+      this.dex,
       positionConfig,
       executor,
       onEvent,
@@ -951,7 +983,7 @@ var TractionEyeClient = class _TractionEyeClient {
     const portfolio = await this.getPortfolio();
     for (const t of portfolio.tokens) {
       if (t.entryPriceTon == null) continue;
-      const tokenPrice = await this.gecko.getTokenPrice(t.address);
+      const tokenPrice = await this.dex.getTokenPrice(t.address);
       if (tokenPrice.priceUsd == null) continue;
       const currentValueTon = Number(t.currentValueTon ?? 0);
       const entryPriceTon = Number(t.entryPriceTon);
@@ -1296,7 +1328,7 @@ function createTractionEyeTools(client) {
     // ── 8. screen_tokens ────────────────────────────────────────────────
     {
       name: "tractioneye_screen_tokens",
-      description: "Screen TON tokens/pools by criteria: liquidity, FDV, market cap, volume, price change (5m to 24h), transactions, buy/sell ratio, unique buyers. Returns matching pools from GeckoTerminal. Use for ad-hoc screening beyond the daemon briefing.",
+      description: "Screen TON tokens/pools by criteria: liquidity, FDV, market cap, volume, price change (5m to 24h), transactions, buy/sell ratio, unique buyers. Returns matching pools from DEX market data. Use for ad-hoc screening beyond the daemon briefing.",
       parameters: {
         type: "object",
         properties: {
@@ -1376,7 +1408,7 @@ function createTractionEyeTools(client) {
     // ── 10. get_token_price ─────────────────────────────────────────────
     {
       name: "tractioneye_get_token_price",
-      description: "Get current USD price for a token by its contract address via GeckoTerminal. Use for quick price checks.",
+      description: "Get current USD price for a token by its contract address. Use for quick price checks.",
       parameters: {
         type: "object",
         properties: {
@@ -1416,6 +1448,7 @@ async function pollOperationStatus(client, operationId) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DEFAULT_DATA_DIR,
+  DexScreenerClient,
   GeckoTerminalClient,
   PositionManager,
   RateLimiter,

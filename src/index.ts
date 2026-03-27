@@ -21,7 +21,7 @@ export type {
 // Rate limiter
 export { RateLimiter, RequestPriority } from './rate-limiter.js';
 
-// GeckoTerminal
+// GeckoTerminal (OHLCV + trades only)
 export { GeckoTerminalClient } from './gecko/index.js';
 export type {
   PoolInfo,
@@ -32,6 +32,10 @@ export type {
   OhlcvMeta,
   OhlcvTimeframe,
 } from './gecko/index.js';
+
+// DexScreener (pool discovery, prices, screening)
+export { DexScreenerClient } from './dexscreener/index.js';
+export type { DexPair } from './dexscreener/index.js';
 
 // Config
 export {
