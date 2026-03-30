@@ -2572,8 +2572,8 @@ var DEX_DEFAULTS = {
   ston_fi: {
     entryThresholds: {
       minBuyerDiversityRatio: 0.2,
-      minVolume1hUsd: 3e3,
-      minLiquidityUsd: 2e3
+      minVolume1hUsd: 500,
+      minLiquidityUsd: 1e3
     },
     sizing: { maxPositionSizePercent: 15 },
     exits: {
@@ -2587,8 +2587,8 @@ var DEX_DEFAULTS = {
   dedust: {
     entryThresholds: {
       minBuyerDiversityRatio: 0.3,
-      minVolume1hUsd: 2e3,
-      minLiquidityUsd: 1500
+      minVolume1hUsd: 400,
+      minLiquidityUsd: 1e3
     },
     sizing: { maxPositionSizePercent: 12 },
     exits: {
@@ -2616,7 +2616,7 @@ function defaultPlaybooks() {
           { field: "buyerAcceleration", condition: ">", threshold: 1.2 }
         ],
         params: {
-          entryThresholds: { minBuyerDiversity: 0.25, minVolume1h: 3e3, minGtScore: 30 },
+          entryThresholds: { minBuyerDiversity: 0.25, minVolume1h: 500, minGtScore: 30 },
           sizing: { positionSizePercent: 10, maxPerToken: 15 },
           exits: {
             takeProfitPercent: 30,
@@ -2636,7 +2636,7 @@ function defaultPlaybooks() {
           { field: "volume1hUsd", condition: ">", threshold: 2e3 }
         ],
         params: {
-          entryThresholds: { minBuyerDiversity: 0.2, minVolume1h: 2e3, minGtScore: null },
+          entryThresholds: { minBuyerDiversity: 0.2, minVolume1h: 400, minGtScore: null },
           sizing: { positionSizePercent: 8, maxPerToken: 12 },
           exits: {
             takeProfitPercent: 15,
@@ -2656,7 +2656,7 @@ function defaultPlaybooks() {
           { field: "buyPressure", condition: ">", threshold: 0.55 }
         ],
         params: {
-          entryThresholds: { minBuyerDiversity: 0.2, minVolume1h: 1500, minGtScore: null },
+          entryThresholds: { minBuyerDiversity: 0.2, minVolume1h: 300, minGtScore: null },
           sizing: { positionSizePercent: 6, maxPerToken: 10 },
           exits: {
             takeProfitPercent: 20,

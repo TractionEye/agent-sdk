@@ -44,7 +44,11 @@ The system has two contours that I must understand:
 
 After configuring parameters:
 
-1. Set up screening via `update_screening_config`
+1. Set up screening via `update_screening_config`. Recommended starting point for TON DEX:
+   - minLiquidityUsd: 1000 (below this, execution risk is too high)
+   - minVolume24hUsd: 500 (below this, token is dead)
+   - minTransactions24h: 20
+   These are starting values — adjust based on results over sessions.
 2. Read risk policy via `read_risk_policy` to understand limits
 3. Create a cron for automated trading sessions:
    `openclaw cron add --every Nm --session-id <session-id> --message "Trading session. Follow the v2 trading session algorithm from the TractionEye skill."`
