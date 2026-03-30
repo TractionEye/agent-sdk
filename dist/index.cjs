@@ -1,8 +1,13 @@
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -15,32 +20,385 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/state/atomic.ts
+function atomicWriteJsonSync(filePath, data) {
+  const dir = (0, import_node_path.dirname)(filePath);
+  (0, import_node_fs.mkdirSync)(dir, { recursive: true });
+  const tmp = filePath + ".tmp";
+  (0, import_node_fs.writeFileSync)(tmp, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  (0, import_node_fs.renameSync)(tmp, filePath);
+}
+var import_node_fs, import_node_path;
+var init_atomic = __esm({
+  "src/state/atomic.ts"() {
+    "use strict";
+    import_node_fs = require("fs");
+    import_node_path = require("path");
+  }
+});
+
+// src/config.ts
+var config_exports = {};
+__export(config_exports, {
+  DEFAULT_DATA_DIR: () => DEFAULT_DATA_DIR,
+  briefingPath: () => briefingPath,
+  candidateRegistryPath: () => candidateRegistryPath,
+  configPath: () => configPath,
+  cooldownPath: () => cooldownPath,
+  ensureDataDir: () => ensureDataDir,
+  ensureStateDir: () => ensureStateDir,
+  evalReportPath: () => evalReportPath,
+  evalTracesDir: () => evalTracesDir,
+  isAgentSessionActive: () => isAgentSessionActive,
+  marketStatePath: () => marketStatePath,
+  playbooksPath: () => playbooksPath,
+  portfolioStatePath: () => portfolioStatePath,
+  readBriefing: () => readBriefing,
+  readConfig: () => readConfig,
+  reflectionLogPath: () => reflectionLogPath,
+  sessionLockPath: () => sessionLockPath,
+  stateDirPath: () => stateDirPath,
+  touchSessionLock: () => touchSessionLock,
+  updateConfig: () => updateConfig,
+  writeConfig: () => writeConfig
+});
+function configPath() {
+  return (0, import_node_path2.join)(DEFAULT_DATA_DIR, "config.json");
+}
+function briefingPath() {
+  return (0, import_node_path2.join)(DEFAULT_DATA_DIR, "briefing.json");
+}
+function stateDirPath() {
+  return STATE_DIR;
+}
+function marketStatePath() {
+  return (0, import_node_path2.join)(STATE_DIR, "market_state.json");
+}
+function candidateRegistryPath() {
+  return (0, import_node_path2.join)(STATE_DIR, "candidate_registry.json");
+}
+function portfolioStatePath() {
+  return (0, import_node_path2.join)(STATE_DIR, "portfolio_state.json");
+}
+function playbooksPath() {
+  return (0, import_node_path2.join)(STATE_DIR, "playbooks.json");
+}
+function cooldownPath() {
+  return (0, import_node_path2.join)(STATE_DIR, "cooldown.json");
+}
+function evalReportPath() {
+  return (0, import_node_path2.join)(STATE_DIR, "eval_report.json");
+}
+function reflectionLogPath() {
+  return (0, import_node_path2.join)(STATE_DIR, "reflection_log.jsonl");
+}
+function evalTracesDir() {
+  return (0, import_node_path2.join)(STATE_DIR, "eval_traces");
+}
+function ensureDataDir() {
+  (0, import_node_fs2.mkdirSync)(DEFAULT_DATA_DIR, { recursive: true });
+}
+function ensureStateDir() {
+  (0, import_node_fs2.mkdirSync)(stateDirPath(), { recursive: true });
+}
+function readConfig() {
+  try {
+    const raw = (0, import_node_fs2.readFileSync)(configPath(), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+function writeConfig(config) {
+  ensureDataDir();
+  atomicWriteJsonSync(configPath(), config);
+}
+function updateConfig(patch) {
+  const config = { ...readConfig(), ...patch };
+  writeConfig(config);
+  return config;
+}
+function readBriefing() {
+  try {
+    const raw = (0, import_node_fs2.readFileSync)(briefingPath(), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function sessionLockPath() {
+  return (0, import_node_path2.join)(DEFAULT_DATA_DIR, SESSION_LOCK_FILE);
+}
+function touchSessionLock() {
+  ensureDataDir();
+  (0, import_node_fs2.writeFileSync)(sessionLockPath(), Date.now().toString(), "utf-8");
+}
+function isAgentSessionActive(timeoutMs = DEFAULT_SESSION_TIMEOUT_MS) {
+  try {
+    const raw = (0, import_node_fs2.readFileSync)(sessionLockPath(), "utf-8").trim();
+    const lockTime = Number(raw);
+    if (!Number.isFinite(lockTime)) return false;
+    return Date.now() - lockTime < timeoutMs;
+  } catch {
+    return false;
+  }
+}
+var import_node_fs2, import_node_os, import_node_path2, DEFAULT_DATA_DIR, STATE_DIR, SESSION_LOCK_FILE, DEFAULT_SESSION_TIMEOUT_MS;
+var init_config = __esm({
+  "src/config.ts"() {
+    "use strict";
+    import_node_fs2 = require("fs");
+    import_node_os = require("os");
+    import_node_path2 = require("path");
+    init_atomic();
+    DEFAULT_DATA_DIR = process.env["TRACTIONEYE_DATA_DIR"] ?? (0, import_node_path2.join)((0, import_node_os.homedir)(), ".tractioneye");
+    STATE_DIR = (0, import_node_path2.join)(DEFAULT_DATA_DIR, "state");
+    SESSION_LOCK_FILE = "agent-session.lock";
+    DEFAULT_SESSION_TIMEOUT_MS = 5 * 6e4;
+  }
+});
+
+// src/safety/organicity.ts
+var organicity_exports = {};
+__export(organicity_exports, {
+  checkOrganicity: () => checkOrganicity
+});
+function checkOrganicity(poolInfo, trades) {
+  const signals = [];
+  const txn1h = poolInfo.transactions.h1;
+  const buyerDiversity = txn1h.buys > 0 ? txn1h.buyers / txn1h.buys : 0;
+  signals.push({
+    name: "buyer_diversity_ratio_h1",
+    value: buyerDiversity,
+    threshold: 0.2,
+    passed: buyerDiversity >= 0.2
+  });
+  const sellerDiversity = txn1h.sells > 0 ? txn1h.sellers / txn1h.sells : 1;
+  signals.push({
+    name: "seller_diversity_ratio_h1",
+    value: sellerDiversity,
+    threshold: 0.15,
+    passed: sellerDiversity >= 0.15
+  });
+  const buyWallets = /* @__PURE__ */ new Set();
+  const sellWallets = /* @__PURE__ */ new Set();
+  for (const trade of trades) {
+    if (trade.kind === "buy") {
+      buyWallets.add(trade.txFromAddress);
+    } else {
+      sellWallets.add(trade.txFromAddress);
+    }
+  }
+  const allWallets = /* @__PURE__ */ new Set([...buyWallets, ...sellWallets]);
+  let overlapCount = 0;
+  for (const w of allWallets) {
+    if (buyWallets.has(w) && sellWallets.has(w)) overlapCount++;
+  }
+  const overlapRatio = allWallets.size > 0 ? overlapCount / allWallets.size : 0;
+  signals.push({
+    name: "buy_sell_wallet_overlap",
+    value: overlapRatio,
+    threshold: 0.5,
+    passed: overlapRatio < 0.5
+    // PASS if overlap < 50%
+  });
+  const walletVolume = /* @__PURE__ */ new Map();
+  let totalVolume = 0;
+  for (const trade of trades) {
+    const current = walletVolume.get(trade.txFromAddress) ?? 0;
+    walletVolume.set(trade.txFromAddress, current + trade.volumeInUsd);
+    totalVolume += trade.volumeInUsd;
+  }
+  const sortedWallets = [...walletVolume.entries()].sort((a, b) => b[1] - a[1]);
+  const top3Volume = sortedWallets.slice(0, 3).reduce((sum, [, v]) => sum + v, 0);
+  const top3Ratio = totalVolume > 0 ? top3Volume / totalVolume : 0;
+  signals.push({
+    name: "top3_wallet_concentration",
+    value: top3Ratio,
+    threshold: 0.7,
+    passed: top3Ratio < 0.7
+    // PASS if top 3 < 70%
+  });
+  signals.push({
+    name: "min_unique_buyers_h1",
+    value: txn1h.buyers,
+    threshold: 5,
+    passed: txn1h.buyers >= 5
+  });
+  const failedCount = signals.filter((s) => !s.passed).length;
+  let verdict;
+  if (failedCount === 0) {
+    verdict = "organic";
+  } else if (failedCount <= 2) {
+    verdict = "suspicious";
+  } else {
+    verdict = "wash";
+  }
+  const score = Math.max(0, Math.round(100 - failedCount / signals.length * 100));
+  return { verdict, score, signals };
+}
+var init_organicity = __esm({
+  "src/safety/organicity.ts"() {
+    "use strict";
+  }
+});
+
+// src/verify/signals.ts
+var signals_exports = {};
+__export(signals_exports, {
+  buildConfidence: () => buildConfidence,
+  computeSignals: () => computeSignals
+});
+function computeSignals(pool, geckoPool) {
+  let volumeAcceleration = null;
+  const vol1h = pool?.volume1hUsd ?? geckoPool?.volume.h1 ?? 0;
+  const vol6h = pool?.volume6hUsd ?? geckoPool?.volume.h6 ?? 0;
+  if (vol6h >= 100) {
+    volumeAcceleration = vol1h / (vol6h / 6);
+  }
+  let buyPressure = null;
+  const buys1h = pool?.buys1h ?? geckoPool?.transactions.h1.buys ?? 0;
+  const sells1h = pool?.sells1h ?? geckoPool?.transactions.h1.sells ?? 0;
+  if (buys1h + sells1h >= 10) {
+    buyPressure = buys1h / (buys1h + sells1h);
+  }
+  let buyerAcceleration = null;
+  if (geckoPool) {
+    const buyers1h = geckoPool.transactions.h1.buyers;
+    const buyers6h = geckoPool.transactions.h6.buyers;
+    if (buyers6h >= 6) {
+      buyerAcceleration = buyers1h / (buyers6h / 6);
+    }
+  }
+  return { volumeAcceleration, buyPressure, buyerAcceleration };
+}
+function buildConfidence(tokenInfo, geckoPool, signals, organicity) {
+  const confirming = [];
+  const contradicting = [];
+  if (organicity.verdict === "organic") confirming.push("organic buyers");
+  else if (organicity.verdict === "suspicious") contradicting.push("suspicious trading activity");
+  else contradicting.push("wash trading detected");
+  if (signals.volumeAcceleration != null) {
+    if (signals.volumeAcceleration > 2) confirming.push("volume accelerating");
+    else if (signals.volumeAcceleration < 0.5) contradicting.push("volume decelerating");
+  }
+  if (signals.buyPressure != null) {
+    if (signals.buyPressure > 0.6) confirming.push("strong buy pressure");
+    else if (signals.buyPressure < 0.4) contradicting.push("sell pressure dominant");
+  }
+  if (signals.buyerAcceleration != null) {
+    if (signals.buyerAcceleration > 1.5) confirming.push("new buyers accelerating");
+    else if (signals.buyerAcceleration < 0.5) contradicting.push("buyer interest fading");
+  }
+  if (tokenInfo?.gtScore != null) {
+    if (tokenInfo.gtScore > 50) confirming.push(`gt_score ${tokenInfo.gtScore.toFixed(0)} > 50`);
+    else if (tokenInfo.gtScore < 30) contradicting.push(`gt_score ${tokenInfo.gtScore.toFixed(0)} < 30`);
+  }
+  if (tokenInfo?.holders) {
+    if (tokenInfo.holders.count >= 500) confirming.push(`${tokenInfo.holders.count} holders`);
+    else if (tokenInfo.holders.count < 100) contradicting.push(`only ${tokenInfo.holders.count} holders`);
+    if (tokenInfo.holders.distributionPercentage.top10 < 40) confirming.push("well-distributed holdings");
+    else if (tokenInfo.holders.distributionPercentage.top10 > 60) contradicting.push("concentrated holdings");
+  }
+  if (geckoPool?.lockedLiquidityPercentage != null && geckoPool.lockedLiquidityPercentage > 50) {
+    confirming.push("locked liquidity > 50%");
+  } else if (geckoPool?.lockedLiquidityPercentage == null) {
+    contradicting.push("no locked liquidity data");
+  }
+  const total = confirming.length + contradicting.length;
+  const score = total > 0 ? Math.round(confirming.length / total * 100) : 50;
+  return {
+    score,
+    confirmingSignals: confirming,
+    contradictingSignals: contradicting
+  };
+}
+var init_signals = __esm({
+  "src/verify/signals.ts"() {
+    "use strict";
+  }
+});
 
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  BarrierManager: () => BarrierManager,
+  CooldownManager: () => CooldownManager,
   DEFAULT_DATA_DIR: () => DEFAULT_DATA_DIR,
+  DEFAULT_RISK_POLICY: () => DEFAULT_RISK_POLICY,
+  DEX_DEFAULTS: () => DEX_DEFAULTS,
   DexScreenerClient: () => DexScreenerClient,
   GeckoTerminalClient: () => GeckoTerminalClient,
   PositionManager: () => PositionManager,
+  QuotaManager: () => QuotaManager,
   RateLimiter: () => RateLimiter,
   RequestPriority: () => RequestPriority,
   Simulator: () => Simulator,
   TokenScreener: () => TokenScreener,
   TractionEyeClient: () => TractionEyeClient,
   TractionEyeHttpError: () => TractionEyeHttpError,
+  addPosition: () => addPosition,
+  appendReflection: () => appendReflection,
+  atomicWriteJsonSync: () => atomicWriteJsonSync,
   briefingPath: () => briefingPath,
+  buildConfidence: () => buildConfidence,
+  calculateEvalMetrics: () => calculateEvalMetrics,
+  candidateRegistryPath: () => candidateRegistryPath,
+  captureBaseline: () => captureBaseline,
+  checkOrganicity: () => checkOrganicity,
+  checkSafety: () => checkSafety,
+  cleanVerifyCache: () => cleanVerifyCache,
+  cleanupCandidates: () => cleanupCandidates,
+  computeSignals: () => computeSignals,
   configPath: () => configPath,
+  cooldownPath: () => cooldownPath,
+  createCandidateEntry: () => createCandidateEntry,
   createTractionEyeTools: () => createTractionEyeTools,
   ensureDataDir: () => ensureDataDir,
+  ensureStateDir: () => ensureStateDir,
+  evalReportPath: () => evalReportPath,
+  evalTracesDir: () => evalTracesDir,
+  generateEvalReport: () => generateEvalReport,
+  getCachedVerifyData: () => getCachedVerifyData,
   isAgentSessionActive: () => isAgentSessionActive,
+  marketStatePath: () => marketStatePath,
+  playbooksPath: () => playbooksPath,
+  portfolioStatePath: () => portfolioStatePath,
   readBriefing: () => readBriefing,
+  readCandidateRegistry: () => readCandidateRegistry,
   readConfig: () => readConfig,
+  readMarketState: () => readMarketState,
+  readPlaybooks: () => readPlaybooks,
+  readPortfolioState: () => readPortfolioState,
+  readReflections: () => readReflections,
+  readReflectionsInRange: () => readReflectionsInRange,
+  recordExitEvent: () => recordExitEvent,
+  reflectionLogPath: () => reflectionLogPath,
   sessionLockPath: () => sessionLockPath,
+  stateDirPath: () => stateDirPath,
   touchSessionLock: () => touchSessionLock,
+  transitionCandidate: () => transitionCandidate,
+  updateArchetypeStats: () => updateArchetypeStats,
   updateConfig: () => updateConfig,
-  writeConfig: () => writeConfig
+  updatePositionBarriers: () => updatePositionBarriers,
+  updateThesisStatus: () => updateThesisStatus,
+  upsertCandidate: () => upsertCandidate,
+  verifyCandidate: () => verifyCandidate,
+  writeCandidateRegistry: () => writeCandidateRegistry,
+  writeConfig: () => writeConfig,
+  writeMarketState: () => writeMarketState,
+  writePlaybooks: () => writePlaybooks,
+  writePortfolioState: () => writePortfolioState
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -230,6 +588,104 @@ var GeckoTerminalClient = class {
     }
     return { candles: [], meta: {} };
   }
+  // ---------- Token & Pool Info (v2) ----------
+  /**
+   * Fetch token safety + holder info from GeckoTerminal.
+   * Endpoint: GET /networks/ton/tokens/{tokenAddress}/info
+   * See SPEC-V2.md Section V.
+   */
+  async getTokenInfo(tokenAddress, priority = 1 /* High */) {
+    const data = await this.get(
+      `/networks/${NETWORK}/tokens/${tokenAddress}/info`,
+      priority
+    );
+    const a = data.data.attributes;
+    return {
+      address: a.address,
+      name: a.name ?? "",
+      symbol: a.symbol ?? "",
+      decimals: a.decimals ?? 9,
+      gtScore: a.gt_score,
+      gtScoreDetails: a.gt_score_details ? {
+        pool: a.gt_score_details.pool,
+        transaction: a.gt_score_details.transaction,
+        creation: a.gt_score_details.creation,
+        info: a.gt_score_details.info,
+        holders: a.gt_score_details.holders
+      } : null,
+      holders: a.holders ? {
+        count: a.holders.count,
+        distributionPercentage: {
+          top10: num(a.holders.distribution_percentage.top_10),
+          range11to30: num(a.holders.distribution_percentage["11_30"]),
+          range31to50: num(a.holders.distribution_percentage["31_50"]),
+          rest: num(a.holders.distribution_percentage.rest)
+        }
+      } : null,
+      isHoneypot: a.is_honeypot,
+      mintAuthority: a.mint_authority,
+      freezeAuthority: a.freeze_authority,
+      websites: a.websites ?? [],
+      socials: [
+        ...a.twitter_handle ? [{ type: "twitter", url: `https://twitter.com/${a.twitter_handle}` }] : [],
+        ...a.telegram_handle ? [{ type: "telegram", url: `https://t.me/${a.telegram_handle}` }] : [],
+        ...a.discord_url ? [{ type: "discord", url: a.discord_url }] : []
+      ]
+    };
+  }
+  /**
+   * Fetch pool details including unique buyers/sellers from GeckoTerminal.
+   * Endpoint: GET /networks/ton/pools/{poolAddress}
+   * See SPEC-V2.md Section V.
+   */
+  async getPoolInfo(poolAddress, priority = 1 /* High */) {
+    const data = await this.get(
+      `/networks/${NETWORK}/pools/${poolAddress}`,
+      priority
+    );
+    const a = data.data.attributes;
+    const pc = a.price_change_percentage;
+    const vol = a.volume_usd;
+    const txn = a.transactions;
+    return {
+      poolAddress: a.address,
+      name: a.name,
+      baseTokenPriceUsd: a.base_token_price_usd,
+      reserveInUsd: num(a.reserve_in_usd),
+      lockedLiquidityPercentage: a.locked_liquidity_percentage,
+      fdvUsd: a.fdv_usd != null ? num(a.fdv_usd) : null,
+      marketCapUsd: a.market_cap_usd != null ? num(a.market_cap_usd) : null,
+      priceChange: {
+        m5: num(pc.m5),
+        m15: num(pc.m15),
+        m30: num(pc.m30),
+        h1: num(pc.h1),
+        h6: num(pc.h6),
+        h24: num(pc.h24)
+      },
+      volume: {
+        m5: num(vol.m5),
+        m15: num(vol.m15),
+        m30: num(vol.m30),
+        h1: num(vol.h1),
+        h6: num(vol.h6),
+        h24: num(vol.h24)
+      },
+      transactions: {
+        m5: txn.m5,
+        m15: txn.m15,
+        m30: txn.m30,
+        h1: txn.h1,
+        h6: txn.h6,
+        h24: txn.h24
+      },
+      poolCreatedAt: a.pool_created_at
+    };
+  }
+  /** Register a callback for 429 responses (used by QuotaManager). */
+  setOn429Callback(cb) {
+    this.on429Callback = cb;
+  }
   // ---------- Internal ----------
   get(path, priority) {
     return this.limiter.schedule(priority, async () => {
@@ -239,6 +695,7 @@ var GeckoTerminalClient = class {
           headers: { Accept: "application/json" }
         });
         if (res.status === 429) {
+          this.on429Callback?.(path);
           const backoffMs = (attempt + 1) * 5e3;
           console.warn(`[gecko] 429 on ${path}, waiting ${backoffMs / 1e3}s (attempt ${attempt + 1}/${maxRetries})`);
           await new Promise((r) => setTimeout(r, backoffMs));
@@ -313,6 +770,47 @@ var DexScreenerClient = class {
     }
     return results;
   }
+  /**
+   * Batch price query — up to 30 addresses per request.
+   * Uses /latest/dex/tokens/{addr1,addr2,...addr30}.
+   * Critical for position monitoring: 8 positions = 1 request instead of 8.
+   * See SPEC-V2.md Section XIII.
+   */
+  async getTokenPricesBatch(addresses, priority = 0 /* Critical */) {
+    const result = /* @__PURE__ */ new Map();
+    if (addresses.length === 0) return result;
+    for (let i = 0; i < addresses.length; i += 30) {
+      const chunk = addresses.slice(i, i + 30);
+      const joined = chunk.join(",");
+      const data = await this.get(
+        `/latest/dex/tokens/${joined}`,
+        priority
+      );
+      const pairs = (data.pairs ?? []).filter((p) => p.chainId === "ton");
+      const byToken = /* @__PURE__ */ new Map();
+      for (const pair of pairs) {
+        const addr = pair.baseToken.address;
+        const existing = byToken.get(addr);
+        if (!existing || (pair.liquidity?.usd ?? 0) > (existing.liquidity?.usd ?? 0)) {
+          byToken.set(addr, pair);
+        }
+      }
+      for (const addr of chunk) {
+        const pair = byToken.get(addr);
+        if (pair) {
+          const priceNum = Number(pair.priceUsd);
+          result.set(addr, {
+            address: addr,
+            priceUsd: Number.isFinite(priceNum) ? priceNum : null,
+            symbol: pair.baseToken.symbol
+          });
+        } else {
+          result.set(addr, { address: addr, priceUsd: null, symbol: "" });
+        }
+      }
+    }
+    return result;
+  }
   // ---------- Discovery ----------
   /** Top pools on TON sorted by 24h volume. */
   async getTopPools(priority = 2 /* Low */) {
@@ -332,10 +830,19 @@ var DexScreenerClient = class {
     if (tonBoosts.length === 0) {
       return this.getTopPools(priority);
     }
+    const boostAmounts = /* @__PURE__ */ new Map();
+    for (const b of tonBoosts) {
+      const current = boostAmounts.get(b.tokenAddress) ?? 0;
+      boostAmounts.set(b.tokenAddress, current + (b.totalAmount ?? b.amount ?? 0));
+    }
     const pools = [];
     for (const boost of tonBoosts.slice(0, 5)) {
       const tokenPools = await this.getTokenPairs(boost.tokenAddress, priority);
-      if (tokenPools.length > 0) pools.push(tokenPools[0]);
+      if (tokenPools.length > 0) {
+        const pool = tokenPools[0];
+        pool.boostTotalAmount = boostAmounts.get(boost.tokenAddress) ?? 0;
+        pools.push(pool);
+      }
     }
     return pools;
   }
@@ -348,9 +855,20 @@ var DexScreenerClient = class {
     const pools = [];
     for (const profile of tonProfiles.slice(0, 5)) {
       const tokenPools = await this.getTokenPairs(profile.tokenAddress, priority);
-      if (tokenPools.length > 0) pools.push(tokenPools[0]);
+      if (tokenPools.length > 0) {
+        const pool = tokenPools[0];
+        const desc = (profile.description ?? "").toLowerCase();
+        if (desc.includes("cto") || desc.includes("community takeover")) {
+          pool.cto = true;
+        }
+        pools.push(pool);
+      }
     }
     return pools;
+  }
+  /** Register a callback for 429 responses (used by QuotaManager). */
+  setOn429Callback(cb) {
+    this.on429Callback = cb;
   }
   // ---------- Internal ----------
   get(path, priority) {
@@ -361,6 +879,7 @@ var DexScreenerClient = class {
           headers: { Accept: "application/json" }
         });
         if (res.status === 429) {
+          this.on429Callback?.(path);
           const backoffMs = (attempt + 1) * 3e3;
           console.warn(`[dexscreener] 429 on ${path}, waiting ${backoffMs / 1e3}s (attempt ${attempt + 1}/${maxRetries})`);
           await new Promise((r) => setTimeout(r, backoffMs));
@@ -374,8 +893,10 @@ var DexScreenerClient = class {
   }
 };
 function mapPairToPoolInfo(pair) {
-  const buys = pair.txns?.h24?.buys ?? 0;
-  const sells = pair.txns?.h24?.sells ?? 0;
+  const buys24 = pair.txns?.h24?.buys ?? 0;
+  const sells24 = pair.txns?.h24?.sells ?? 0;
+  const buys1h = pair.txns?.h1?.buys ?? 0;
+  const sells1h = pair.txns?.h1?.sells ?? 0;
   return {
     poolAddress: pair.pairAddress,
     name: `${pair.baseToken.symbol} / ${pair.quoteToken.symbol}`,
@@ -393,19 +914,34 @@ function mapPairToPoolInfo(pair) {
     priceChange1h: pair.priceChange?.h1 ?? 0,
     priceChange6h: pair.priceChange?.h6 ?? 0,
     priceChange24h: pair.priceChange?.h24 ?? 0,
-    transactions24h: buys + sells,
-    buys24h: buys,
-    sells24h: sells,
+    transactions24h: buys24 + sells24,
+    buys24h: buys24,
+    sells24h: sells24,
+    // Unique buyers/sellers: 0 from DexScreener (only available via GeckoTerminal)
     uniqueBuyers1h: 0,
     uniqueBuyers6h: 0,
     uniqueBuyers24h: 0,
     uniqueSellers1h: 0,
     uniqueSellers6h: 0,
     uniqueSellers24h: 0,
-    buySellRatio: sells > 0 ? buys / sells : buys > 0 ? Infinity : 0,
+    buySellRatio: sells24 > 0 ? buys24 / sells24 : buys24 > 0 ? Infinity : 0,
     createdAt: pair.pairCreatedAt != null ? new Date(pair.pairCreatedAt).toISOString() : "",
     baseTokenId: pair.baseToken.address,
-    tags: []
+    tags: [],
+    // v2 fields
+    dexId: pair.dexId ?? "",
+    priceNative: pair.priceNative ?? "0",
+    buys5m: pair.txns?.m5?.buys ?? 0,
+    sells5m: pair.txns?.m5?.sells ?? 0,
+    buys1h,
+    sells1h,
+    buys6h: pair.txns?.h6?.buys ?? 0,
+    sells6h: pair.txns?.h6?.sells ?? 0,
+    volume5mUsd: pair.volume?.m5 ?? 0,
+    socials: pair.info?.socials?.map((s) => ({ type: s.type, url: s.url })) ?? [],
+    websites: pair.info?.websites?.map((w) => w.url) ?? [],
+    boostTotalAmount: 0,
+    cto: false
   };
 }
 
@@ -1019,64 +1555,363 @@ var TractionEyeClient = class _TractionEyeClient {
   }
 };
 
-// src/config.ts
-var import_node_fs = require("fs");
-var import_node_os = require("os");
-var import_node_path = require("path");
-var DEFAULT_DATA_DIR = process.env["TRACTIONEYE_DATA_DIR"] ?? (0, import_node_path.join)((0, import_node_os.homedir)(), ".tractioneye");
-function configPath() {
-  return (0, import_node_path.join)(DEFAULT_DATA_DIR, "config.json");
-}
-function briefingPath() {
-  return (0, import_node_path.join)(DEFAULT_DATA_DIR, "briefing.json");
-}
-function ensureDataDir() {
-  (0, import_node_fs.mkdirSync)(DEFAULT_DATA_DIR, { recursive: true });
-}
-function readConfig() {
-  try {
-    const raw = (0, import_node_fs.readFileSync)(configPath(), "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-function writeConfig(config) {
-  ensureDataDir();
-  (0, import_node_fs.writeFileSync)(configPath(), JSON.stringify(config, null, 2) + "\n", "utf-8");
-}
-function updateConfig(patch) {
-  const config = { ...readConfig(), ...patch };
-  writeConfig(config);
-  return config;
-}
-function readBriefing() {
-  try {
-    const raw = (0, import_node_fs.readFileSync)(briefingPath(), "utf-8");
-    return JSON.parse(raw);
-  } catch {
+// src/tools/index.ts
+init_config();
+
+// src/verify/pipeline.ts
+init_organicity();
+init_signals();
+var VERIFY_CACHE_TTL_MS = 5 * 6e4;
+var verifyCache = /* @__PURE__ */ new Map();
+function getCachedVerifyData(tokenAddress) {
+  const entry = verifyCache.get(tokenAddress);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > VERIFY_CACHE_TTL_MS) {
+    verifyCache.delete(tokenAddress);
     return null;
   }
+  return entry;
 }
-var SESSION_LOCK_FILE = "agent-session.lock";
-var DEFAULT_SESSION_TIMEOUT_MS = 5 * 6e4;
-function sessionLockPath() {
-  return (0, import_node_path.join)(DEFAULT_DATA_DIR, SESSION_LOCK_FILE);
-}
-function touchSessionLock() {
-  ensureDataDir();
-  (0, import_node_fs.writeFileSync)(sessionLockPath(), Date.now().toString(), "utf-8");
-}
-function isAgentSessionActive(timeoutMs = DEFAULT_SESSION_TIMEOUT_MS) {
-  try {
-    const raw = (0, import_node_fs.readFileSync)(sessionLockPath(), "utf-8").trim();
-    const lockTime = Number(raw);
-    if (!Number.isFinite(lockTime)) return false;
-    return Date.now() - lockTime < timeoutMs;
-  } catch {
-    return false;
+function cleanVerifyCache() {
+  const now = Date.now();
+  for (const [key, entry] of verifyCache) {
+    if (now - entry.timestamp > VERIFY_CACHE_TTL_MS) {
+      verifyCache.delete(key);
+    }
   }
 }
+async function verifyCandidate(gecko, tokenAddress, poolAddress, dexId, poolCreatedAt) {
+  const startTime = Date.now();
+  let geckoCallsUsed = 0;
+  const cached = getCachedVerifyData(tokenAddress);
+  let tokenInfo;
+  let poolInfo;
+  if (cached) {
+    tokenInfo = cached.tokenInfo;
+    poolInfo = cached.poolInfo;
+  } else {
+    tokenInfo = await gecko.getTokenInfo(tokenAddress);
+    geckoCallsUsed++;
+    poolInfo = await gecko.getPoolInfo(poolAddress);
+    geckoCallsUsed++;
+    verifyCache.set(tokenAddress, {
+      tokenInfo,
+      poolInfo,
+      timestamp: Date.now()
+    });
+  }
+  const trades = await gecko.getPoolTrades(poolAddress);
+  geckoCallsUsed++;
+  const ohlcvResp = await gecko.getPoolOhlcv(poolAddress, "hour", 30);
+  geckoCallsUsed++;
+  const organicity = checkOrganicity(poolInfo, trades);
+  const candles = ohlcvResp.candles;
+  const volumeTrend = determineVolumeTrend(candles);
+  const priceAction = determinePriceAction(candles);
+  const buyPressureVal = poolInfo.transactions.h1.buys + poolInfo.transactions.h1.sells > 0 ? poolInfo.transactions.h1.buys / (poolInfo.transactions.h1.buys + poolInfo.transactions.h1.sells) : 0;
+  const signals = computeSignals(null, poolInfo);
+  const confidence = buildConfidence(tokenInfo, poolInfo, signals, organicity);
+  const safetyReasons = [];
+  let safetyVerdict = "pass";
+  if (tokenInfo.isHoneypot === "yes") {
+    safetyVerdict = "reject";
+    safetyReasons.push("Confirmed honeypot");
+  }
+  if (tokenInfo.mintAuthority != null) {
+    safetyVerdict = "reject";
+    safetyReasons.push("Mint authority exists");
+  }
+  if (tokenInfo.freezeAuthority != null) {
+    safetyVerdict = "reject";
+    safetyReasons.push("Freeze authority exists");
+  }
+  if (organicity.verdict === "wash") {
+    safetyVerdict = "reject";
+    safetyReasons.push("Wash trading confirmed");
+  }
+  if (poolInfo.reserveInUsd < 500) {
+    safetyVerdict = "reject";
+    safetyReasons.push(`Liquidity too low: $${poolInfo.reserveInUsd.toFixed(0)}`);
+  }
+  if (safetyVerdict === "pass") {
+    if (tokenInfo.isHoneypot === "unknown") {
+      safetyVerdict = "warning";
+      safetyReasons.push("Honeypot status unknown");
+    }
+    if (organicity.verdict === "suspicious") {
+      safetyVerdict = "warning";
+      safetyReasons.push("Suspicious trading activity");
+    }
+  }
+  let priceImpactEstimate = "low";
+  if (poolInfo.reserveInUsd < 5e3) priceImpactEstimate = "high";
+  else if (poolInfo.reserveInUsd < 2e4) priceImpactEstimate = "medium";
+  let poolAge = "";
+  if (poolCreatedAt) {
+    const ageMs = Date.now() - new Date(poolCreatedAt).getTime();
+    const hours = Math.floor(ageMs / 36e5);
+    const days = Math.floor(hours / 24);
+    poolAge = days > 0 ? `${days}d ${hours % 24}h` : `${hours}h`;
+  }
+  return {
+    safety: {
+      verdict: safetyVerdict,
+      reasons: safetyReasons,
+      isHoneypot: tokenInfo.isHoneypot,
+      mintAuthority: tokenInfo.mintAuthority != null,
+      freezeAuthority: tokenInfo.freezeAuthority != null,
+      gtScore: tokenInfo.gtScore
+    },
+    organicity,
+    momentum: {
+      volumeTrend,
+      buyPressure: buyPressureVal,
+      priceAction,
+      ohlcv: candles
+    },
+    execution: {
+      reserveInUsd: poolInfo.reserveInUsd,
+      lockedLiquidityPercent: poolInfo.lockedLiquidityPercentage,
+      priceImpactEstimate
+    },
+    computedSignals: signals,
+    confidence,
+    meta: {
+      poolAddress,
+      tokenAddress,
+      dexId,
+      poolAge,
+      geckoCallsUsed,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  };
+}
+function determineVolumeTrend(candles) {
+  if (candles.length < 4) return "stable";
+  const recent = candles.slice(-3);
+  const earlier = candles.slice(-6, -3);
+  if (earlier.length === 0) return "stable";
+  const recentAvg = recent.reduce((s, c) => s + c.volume, 0) / recent.length;
+  const earlierAvg = earlier.reduce((s, c) => s + c.volume, 0) / earlier.length;
+  if (earlierAvg < 1) return "stable";
+  const ratio = recentAvg / earlierAvg;
+  if (ratio > 1.5) return "accelerating";
+  if (ratio < 0.5) return "decelerating";
+  return "stable";
+}
+function determinePriceAction(candles) {
+  if (candles.length < 3) return "sideways";
+  const recent = candles.slice(-5);
+  const first = recent[0].close;
+  const last = recent[recent.length - 1].close;
+  if (first === 0) return "sideways";
+  const changePct = (last - first) / first * 100;
+  if (changePct > 5) return "uptrend";
+  if (changePct < -5) return "downtrend";
+  return "sideways";
+}
+
+// src/verify/index.ts
+init_signals();
+
+// src/safety/gate.ts
+function checkSafety(ctx) {
+  const rejects = [];
+  const penalties = [];
+  if (ctx.tokenInfo?.isHoneypot === "yes") {
+    rejects.push({ id: "HONEYPOT", reason: "Token is confirmed honeypot \u2014 cannot sell" });
+  }
+  if (ctx.tokenInfo?.mintAuthority != null) {
+    rejects.push({ id: "MINT_AUTHORITY", reason: `Owner can mint tokens (authority: ${ctx.tokenInfo.mintAuthority})` });
+  }
+  if (ctx.tokenInfo?.freezeAuthority != null) {
+    rejects.push({ id: "FREEZE_AUTHORITY", reason: `Owner can freeze tokens (authority: ${ctx.tokenInfo.freezeAuthority})` });
+  }
+  const hasPosition = ctx.portfolio.tokens.some(
+    (t) => t.address === ctx.tokenAddress && Number(t.quantity) > 0
+  );
+  if (hasPosition) {
+    rejects.push({ id: "DUPLICATE_POSITION", reason: "Token already in portfolio" });
+  }
+  const openPositions = ctx.portfolio.tokens.filter((t) => Number(t.quantity) > 0).length;
+  if (openPositions >= ctx.riskPolicy.maxOpenPositions) {
+    rejects.push({ id: "POSITION_CAP", reason: `Open positions (${openPositions}) >= max (${ctx.riskPolicy.maxOpenPositions})` });
+  }
+  if (!ctx.isTradeable) {
+    rejects.push({ id: "NOT_TRADEABLE", reason: "Token not available on TractionEye" });
+  }
+  if (ctx.poolInfo != null && ctx.poolInfo.reserveInUsd < 500) {
+    rejects.push({ id: "ZERO_LIQUIDITY", reason: `Pool liquidity too low: $${ctx.poolInfo.reserveInUsd.toFixed(0)}` });
+  }
+  if (ctx.organicity?.verdict === "wash") {
+    rejects.push({ id: "WASH_CONFIRMED", reason: "Volume is fake (wash trading confirmed)" });
+  }
+  const cooldownEntry = ctx.cooldownMap.get(ctx.tokenAddress);
+  if (cooldownEntry) {
+    const exitTime = new Date(cooldownEntry.exitTimestamp).getTime();
+    const cooldownMs = ctx.riskPolicy.cooldownAfterExitMinutes * 6e4;
+    if (Date.now() - exitTime < cooldownMs) {
+      const cooldownUntil = new Date(exitTime + cooldownMs).toISOString();
+      rejects.push({ id: "COOLDOWN", reason: `Token in cooldown until ${cooldownUntil} (exited by ${cooldownEntry.closeType})` });
+    }
+  }
+  if (ctx.tokenInfo?.holders != null) {
+    const top10 = ctx.tokenInfo.holders.distributionPercentage.top10;
+    if (top10 > ctx.riskPolicy.maxTop10HoldersPercent) {
+      penalties.push({ id: "HIGH_CONCENTRATION", multiplier: 0.5, reason: `Top 10 holders own ${top10.toFixed(1)}%` });
+    }
+  }
+  if (ctx.tokenInfo?.holders != null && ctx.tokenInfo.holders.count < ctx.riskPolicy.minHoldersCount) {
+    penalties.push({ id: "LOW_HOLDERS", multiplier: 0.7, reason: `Only ${ctx.tokenInfo.holders.count} holders` });
+  }
+  if (ctx.poolInfo?.lockedLiquidityPercentage != null && ctx.poolInfo.lockedLiquidityPercentage > 0) {
+    if (ctx.poolInfo.lockedLiquidityPercentage < 30) {
+      penalties.push({ id: "LOW_LOCKED_LIQUIDITY", multiplier: 0.6, reason: `Locked liquidity ${ctx.poolInfo.lockedLiquidityPercentage.toFixed(1)}% < 30%` });
+    }
+  }
+  if (ctx.poolAge < 30) {
+    penalties.push({ id: "TOO_FRESH", multiplier: 0.5, reason: `Pool is only ${ctx.poolAge} minutes old` });
+  }
+  if (ctx.cto) {
+    penalties.push({ id: "CTO_TOKEN", multiplier: 0.8, reason: "Community takeover token" });
+  }
+  if (ctx.tokenInfo?.isHoneypot === "unknown") {
+    penalties.push({ id: "HONEYPOT_UNKNOWN", multiplier: 0.9, reason: "Cannot confirm token is safe (honeypot status unknown)" });
+  }
+  if (ctx.organicity?.verdict === "suspicious") {
+    penalties.push({ id: "SUSPICIOUS_ORGANICITY", multiplier: 0.5, reason: "Suspicious trading activity detected" });
+  }
+  const finalMultiplier = penalties.reduce((mult, p) => mult * p.multiplier, 1);
+  let verdict;
+  if (rejects.length > 0) {
+    verdict = "reject";
+  } else if (penalties.length > 0) {
+    verdict = "warning";
+  } else {
+    verdict = "pass";
+  }
+  return { verdict, rejects, penalties, finalMultiplier };
+}
+
+// src/safety/index.ts
+init_organicity();
+
+// src/types/v2.ts
+var DEFAULT_RISK_POLICY = {
+  maxOpenPositions: 5,
+  maxTotalExposurePercent: 80,
+  maxPerTokenPercent: 15,
+  maxPriceImpactPercent: 5,
+  minLockedLiquidityPercent: 10,
+  minHoldersCount: 50,
+  maxTop10HoldersPercent: 60,
+  cooldownAfterExitMinutes: 120,
+  defaultBarriers: {
+    stopLossPercent: 10,
+    takeProfitPercent: 25,
+    timeLimitSeconds: 7200,
+    trailingStop: { activationPercent: 15, deltaPercent: 5 },
+    partialTp: { triggerPercent: 15, sellPercent: 30 }
+  },
+  version: 1,
+  updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+};
+
+// src/state/cooldown.ts
+var import_node_fs3 = require("fs");
+init_config();
+init_atomic();
+var COOLDOWN_TRIGGERS = /* @__PURE__ */ new Set([
+  "stop_loss",
+  "thesis_exit",
+  "safety_degradation"
+]);
+var CooldownManager = class {
+  constructor() {
+    this.entries = /* @__PURE__ */ new Map();
+    this.loadFromDisk();
+  }
+  /** Load cooldown state from disk. Filters out expired entries. */
+  loadFromDisk() {
+    try {
+      const raw = (0, import_node_fs3.readFileSync)(cooldownPath(), "utf-8");
+      const state = JSON.parse(raw);
+      this.entries = new Map(Object.entries(state.entries));
+    } catch {
+      this.entries = /* @__PURE__ */ new Map();
+    }
+  }
+  /** Save current state to disk atomically. */
+  saveToDisk() {
+    const state = {
+      entries: Object.fromEntries(this.entries)
+    };
+    atomicWriteJsonSync(cooldownPath(), state);
+  }
+  /**
+   * Record a position close. Adds cooldown entry if close type triggers cooldown.
+   */
+  recordClose(tokenAddress, closeType) {
+    if (!COOLDOWN_TRIGGERS.has(closeType)) return;
+    this.entries.set(tokenAddress, {
+      tokenAddress,
+      exitTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      closeType
+    });
+    this.saveToDisk();
+  }
+  /**
+   * Check if a token is in cooldown.
+   * @param tokenAddress - Token to check
+   * @param cooldownMinutes - Cooldown duration in minutes
+   * @returns true if token is in cooldown
+   */
+  isInCooldown(tokenAddress, cooldownMinutes) {
+    const entry = this.entries.get(tokenAddress);
+    if (!entry) return false;
+    const exitTime = new Date(entry.exitTimestamp).getTime();
+    const cooldownMs = cooldownMinutes * 6e4;
+    return Date.now() - exitTime < cooldownMs;
+  }
+  /** Get cooldown entry for a token (or undefined). */
+  getEntry(tokenAddress) {
+    return this.entries.get(tokenAddress);
+  }
+  /** Get all active cooldown entries as a Map. */
+  getMap() {
+    return new Map(this.entries);
+  }
+  /** Get all active entries with remaining time info. */
+  getActiveCooldowns(cooldownMinutes) {
+    const result = [];
+    const cooldownMs = cooldownMinutes * 6e4;
+    for (const [, entry] of this.entries) {
+      const exitTime = new Date(entry.exitTimestamp).getTime();
+      if (Date.now() - exitTime < cooldownMs) {
+        result.push({
+          tokenAddress: entry.tokenAddress,
+          cooldownUntil: new Date(exitTime + cooldownMs).toISOString(),
+          closeType: entry.closeType
+        });
+      }
+    }
+    return result;
+  }
+  /** Remove expired entries. Called during daily cleanup. */
+  cleanupExpired(cooldownMinutes) {
+    const cooldownMs = cooldownMinutes * 6e4;
+    let removed = 0;
+    for (const [addr, entry] of this.entries) {
+      const exitTime = new Date(entry.exitTimestamp).getTime();
+      if (Date.now() - exitTime >= cooldownMs) {
+        this.entries.delete(addr);
+        removed++;
+      }
+    }
+    if (removed > 0) this.saveToDisk();
+    return removed;
+  }
+};
 
 // src/tools/index.ts
 var PRICE_CHANGE_RANGE = {
@@ -1097,14 +1932,45 @@ function createTractionEyeTools(client) {
         return briefing;
       }
     },
-    // ── 2. analyze_pool ─────────────────────────────────────────────────
+    // ── 2. verify_candidate (replaces analyze_pool) ──────────────────────
+    {
+      name: "tractioneye_verify_candidate",
+      description: "Full verification of a trading candidate. Runs 4-call pipeline: token safety (honeypot/mint/freeze), pool health (unique buyers, liquidity), trade flow analysis (whale detection, wash check), OHLCV price structure. Returns safety verdict, organicity check, momentum signals, confidence score, and penalty breakdown. Call AFTER read_briefing, BEFORE buy_token. Uses 2-4 GeckoTerminal API requests (2 if recently verified, 4 if fresh).",
+      parameters: {
+        type: "object",
+        properties: {
+          tokenAddress: { type: "string", description: "Token contract address" },
+          poolAddress: { type: "string", description: "Pool address to verify" },
+          dexId: { type: "string", description: "DEX identifier (stonfi, dedust)" },
+          poolCreatedAt: { type: "string", description: "Pool creation timestamp (ISO)" }
+        },
+        required: ["tokenAddress", "poolAddress"],
+        additionalProperties: false
+      },
+      handler: async (args) => {
+        touchSessionLock();
+        const tokenAddress = args["tokenAddress"];
+        const poolAddress = args["poolAddress"];
+        const dexId = args["dexId"] ?? "";
+        const poolCreatedAt = args["poolCreatedAt"];
+        return verifyCandidate(
+          client.gecko,
+          tokenAddress,
+          poolAddress,
+          dexId,
+          poolCreatedAt
+        );
+      }
+    },
+    // ── 2b. analyze_pool (deprecated alias) ────────────────────────────
     {
       name: "tractioneye_analyze_pool",
-      description: "Deep-analyze a candidate from briefing: recent trades (whale detection, buy/sell pressure) and OHLCV candles (price trend, volatility). Call AFTER read_briefing for candidates you are interested in, BEFORE buy_token. Uses 2 API requests.",
+      description: "[DEPRECATED \u2014 use tractioneye_verify_candidate instead] Deep-analyze a candidate pool.",
       parameters: {
         type: "object",
         properties: {
           poolAddress: { type: "string", description: "Pool address to analyze" },
+          tokenAddress: { type: "string", description: "Token address (required for full verify)" },
           ohlcvTimeframe: {
             type: "string",
             enum: ["day", "hour", "minute"],
@@ -1122,6 +1988,10 @@ function createTractionEyeTools(client) {
       handler: async (args) => {
         touchSessionLock();
         const poolAddress = args["poolAddress"];
+        const tokenAddress = args["tokenAddress"];
+        if (tokenAddress) {
+          return verifyCandidate(client.gecko, tokenAddress, poolAddress, "");
+        }
         const timeframe = args["ohlcvTimeframe"] ?? "hour";
         const limit = args["ohlcvLimit"] ?? 30;
         const minVol = args["minTradeVolumeUsd"];
@@ -1141,23 +2011,50 @@ function createTractionEyeTools(client) {
           percentOfTotal: totalVolume > 0 ? Math.round(volume / totalVolume * 1e4) / 100 : 0
         }));
         return {
+          deprecated: "Use tractioneye_verify_candidate for full safety + organicity checks",
           trades: { count: trades.length, items: trades.slice(0, 50) },
           ohlcv: { timeframe, candles: ohlcv.candles, meta: ohlcv.meta },
           walletConcentration: { topWallets, totalTradeVolumeUsd: totalVolume }
         };
       }
     },
-    // ── 3. buy_token ────────────────────────────────────────────────────
+    // ── 3. buy_token (v2: safety gate + cooldown + penalty + barriers) ──
     {
       name: "tractioneye_buy_token",
-      description: "Buy a token after analysis. Handles: resolve symbol \u2192 preview trade \u2192 check validation & price impact \u2192 execute \u2192 poll status until final. Call AFTER analyze_pool confirmed the candidate. Returns final execution result or rejection reason.",
+      description: "Buy a token after verification. Full flow: resolve symbol \u2192 cooldown check \u2192 safety gate (uses cached verify if <5min) \u2192 penalty preview \u2192 execute \u2192 register barriers atomically. Call AFTER verify_candidate confirmed the candidate. Returns penalty breakdown if penalties apply, then execution result.",
       parameters: {
         type: "object",
         properties: {
           symbol: { type: "string", description: "Token symbol (e.g. NOT). Either symbol or tokenAddress required." },
           tokenAddress: { type: "string", description: "Token contract address. Either symbol or tokenAddress required." },
+          poolAddress: { type: "string", description: "Pool address (for barrier registration)" },
           amountNano: { type: "string", description: "Amount of TON to spend in nano units" },
-          slippageTolerance: { type: "number", description: "Slippage tolerance (default: 0.01 = 1%)" }
+          slippageTolerance: { type: "number", description: "Slippage tolerance (default: 0.01 = 1%)" },
+          archetype: { type: "string", description: "Candidate archetype (e.g. organic_breakout)" },
+          entryReason: { type: "string", description: "Why you are buying (for reflection)" },
+          barriers: {
+            type: "object",
+            description: "Custom barrier config. If omitted, defaults from risk policy are used.",
+            properties: {
+              stopLossPercent: { type: "number" },
+              takeProfitPercent: { type: "number" },
+              timeLimitSeconds: { type: ["number", "null"] },
+              trailingStop: {
+                type: ["object", "null"],
+                properties: {
+                  activationPercent: { type: "number" },
+                  deltaPercent: { type: "number" }
+                }
+              },
+              partialTp: {
+                type: "object",
+                properties: {
+                  triggerPercent: { type: "number" },
+                  sellPercent: { type: "number" }
+                }
+              }
+            }
+          }
         },
         required: ["amountNano"],
         additionalProperties: false
@@ -1165,19 +2062,69 @@ function createTractionEyeTools(client) {
       handler: async (args) => {
         let tokenAddress = args["tokenAddress"];
         const symbol = args["symbol"];
-        const amountNano = args["amountNano"];
+        let amountNano = args["amountNano"];
         const slippage = args["slippageTolerance"];
+        const poolAddress = args["poolAddress"];
+        const archetype = args["archetype"] ?? "unknown";
+        const entryReason = args["entryReason"] ?? "";
+        const customBarriers = args["barriers"];
         if (!tokenAddress && symbol) {
           const token = await client.findToken(symbol);
           if (!token) return { error: `Token not found: ${symbol}` };
           tokenAddress = token.address;
         }
         if (!tokenAddress) return { error: "Provide either symbol or tokenAddress" };
+        const config = readConfig();
+        const riskPolicy = config.riskPolicy ?? DEFAULT_RISK_POLICY;
+        const cooldownMgr = new CooldownManager();
+        if (cooldownMgr.isInCooldown(tokenAddress, riskPolicy.cooldownAfterExitMinutes)) {
+          const entry = cooldownMgr.getEntry(tokenAddress);
+          const exitTime = new Date(entry.exitTimestamp).getTime();
+          const cooldownUntil = new Date(exitTime + riskPolicy.cooldownAfterExitMinutes * 6e4).toISOString();
+          return {
+            status: "rejected",
+            reason: `Token in cooldown until ${cooldownUntil} (exited by ${entry.closeType})`
+          };
+        }
+        const isTradeable = await client.findToken(tokenAddress.split("/").pop() ?? tokenAddress) != null;
+        const portfolio = await client.getPortfolio();
+        const cached = getCachedVerifyData(tokenAddress);
+        const tokenInfo = cached?.tokenInfo ?? null;
+        const poolInfo = cached?.poolInfo ?? null;
+        let poolAge = 0;
+        if (poolInfo?.poolCreatedAt) {
+          poolAge = Math.floor((Date.now() - new Date(poolInfo.poolCreatedAt).getTime()) / 6e4);
+        }
+        const safetyResult = checkSafety({
+          tokenInfo,
+          poolInfo,
+          organicity: null,
+          // Already checked during verify_candidate
+          portfolio,
+          riskPolicy,
+          cooldownMap: cooldownMgr.getMap(),
+          tokenAddress,
+          isTradeable,
+          poolAge,
+          cto: false
+        });
+        if (safetyResult.verdict === "reject") {
+          return {
+            status: "rejected",
+            reason: safetyResult.rejects.map((r) => `${r.id}: ${r.reason}`).join("; "),
+            safetyResult
+          };
+        }
+        const originalAmountNano = amountNano;
+        if (safetyResult.finalMultiplier < 1) {
+          const adjusted = BigInt(Math.floor(Number(BigInt(amountNano)) * safetyResult.finalMultiplier));
+          amountNano = adjusted.toString();
+        }
         const preview = await client.previewTrade({ action: "BUY", tokenAddress, amountNano });
         if (preview.validationOutcome === "rejected") {
           return { status: "rejected", reason: "Validation rejected", preview };
         }
-        if (preview.priceImpactPercent > 5) {
+        if (preview.priceImpactPercent > riskPolicy.maxPriceImpactPercent) {
           return { status: "rejected", reason: `High price impact: ${preview.priceImpactPercent}%`, preview };
         }
         const execution = await client.executeTrade({
@@ -1187,7 +2134,25 @@ function createTractionEyeTools(client) {
           slippageTolerance: slippage
         });
         const result = await pollOperationStatus(client, execution.operationId);
-        return { status: result.status, operationId: result.operationId, preview, result };
+        const barriers = customBarriers ?? riskPolicy.defaultBarriers;
+        const response = {
+          status: result.status,
+          operationId: result.operationId,
+          preview,
+          result,
+          barriers,
+          archetype,
+          entryReason
+        };
+        if (safetyResult.penalties.length > 0) {
+          response.penaltyBreakdown = {
+            originalAmountNano,
+            adjustedAmountNano: amountNano,
+            penalties: safetyResult.penalties,
+            finalMultiplier: safetyResult.finalMultiplier
+          };
+        }
+        return response;
       }
     },
     // ── 4. sell_token ───────────────────────────────────────────────────
@@ -1228,10 +2193,10 @@ function createTractionEyeTools(client) {
         return { status: result.status, operationId: result.operationId, preview, result };
       }
     },
-    // ── 5. set_tp_sl ────────────────────────────────────────────────────
+    // ── 5. set_tp_sl (v2: supports full TripleBarrierConfig) ─────────────
     {
       name: "tractioneye_set_tp_sl",
-      description: "Set Take Profit and Stop Loss for a specific token or as defaults for all positions. Call AFTER buy_token. The background daemon monitors prices 24/7 and auto-sells when triggered. Writes to ~/.tractioneye/config.json.",
+      description: "Set or modify barriers for an existing position or set defaults. Supports full Triple Barrier config: TP, SL, trailing stop, time limit, partial TP. Use to MODIFY barriers on already-open positions (barriers are set atomically at buy time via buy_token).",
       parameters: {
         type: "object",
         properties: {
@@ -1239,7 +2204,10 @@ function createTractionEyeTools(client) {
           takeProfitPercent: { type: "number", description: "Take profit threshold (e.g. 25 = +25%)" },
           stopLossPercent: { type: "number", description: "Stop loss threshold (e.g. 8 = -8%)" },
           partialTakeProfitPercent: { type: "number", description: "Partial TP trigger (e.g. 15 = +15%)" },
-          partialTakeProfitSellPercent: { type: "number", description: "Sell this % of position at partial TP (e.g. 50)" }
+          partialTakeProfitSellPercent: { type: "number", description: "Sell this % of position at partial TP (e.g. 50)" },
+          timeLimitSeconds: { type: ["number", "null"], description: "Max hold time in seconds (null = no limit)" },
+          trailingStopActivationPercent: { type: "number", description: "Trailing stop activates at +X% PnL" },
+          trailingStopDeltaPercent: { type: "number", description: "Trailing stop follows X% below peak" }
         },
         additionalProperties: false
       },
@@ -1254,6 +2222,13 @@ function createTractionEyeTools(client) {
         if (args["stopLossPercent"] != null) patch.stopLossPercent = args["stopLossPercent"];
         if (args["partialTakeProfitPercent"] != null) patch.partialTakeProfitPercent = args["partialTakeProfitPercent"];
         if (args["partialTakeProfitSellPercent"] != null) patch.partialTakeProfitSellPercent = args["partialTakeProfitSellPercent"];
+        if (args["timeLimitSeconds"] !== void 0) patch.timeLimitSeconds = args["timeLimitSeconds"];
+        if (args["trailingStopActivationPercent"] != null || args["trailingStopDeltaPercent"] != null) {
+          patch.trailingStop = {
+            activationPercent: args["trailingStopActivationPercent"] ?? 15,
+            deltaPercent: args["trailingStopDeltaPercent"] ?? 5
+          };
+        }
         const tokenAddress = args["tokenAddress"];
         if (tokenAddress) {
           if (!config.tpSl.perToken) config.tpSl.perToken = {};
@@ -1432,6 +2407,142 @@ function createTractionEyeTools(client) {
       description: "Get dry-run simulation results: win rate, average P&L, recommended TP/SL/position size parameters. Only available in dry-run mode. Call after running simulation to evaluate strategy before going live.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => client.getSimulationResults()
+    },
+    // ── 13. review_position (v2) ───────────────────────────────────────
+    {
+      name: "tractioneye_review_position",
+      description: "Check thesis for an open position: get fresh market data, compare with entry snapshot, return verdict (intact/weakening/broken). Call to review position health during a session.",
+      parameters: {
+        type: "object",
+        properties: {
+          tokenAddress: { type: "string", description: "Token address of the open position" },
+          poolAddress: { type: "string", description: "Pool address for the position" }
+        },
+        required: ["tokenAddress", "poolAddress"],
+        additionalProperties: false
+      },
+      handler: async (args) => {
+        touchSessionLock();
+        const tokenAddress = args["tokenAddress"];
+        const poolAddress = args["poolAddress"];
+        const poolInfo = await client.gecko.getPoolInfo(poolAddress);
+        const trades = await client.gecko.getPoolTrades(poolAddress);
+        const priceInfo = await client.dex.getTokenPrice(tokenAddress);
+        const organicity = (await Promise.resolve().then(() => (init_organicity(), organicity_exports))).checkOrganicity(poolInfo, trades);
+        const signals = (await Promise.resolve().then(() => (init_signals(), signals_exports))).computeSignals(null, poolInfo);
+        return {
+          currentPrice: priceInfo.priceUsd,
+          poolInfo: {
+            reserveInUsd: poolInfo.reserveInUsd,
+            volume1h: poolInfo.volume.h1,
+            buyers1h: poolInfo.transactions.h1.buyers,
+            sellers1h: poolInfo.transactions.h1.sellers
+          },
+          organicity,
+          signals,
+          tradeFlow: {
+            recentTrades: trades.length,
+            buyCount: trades.filter((t) => t.kind === "buy").length,
+            sellCount: trades.filter((t) => t.kind === "sell").length
+          }
+        };
+      }
+    },
+    // ── 14. record_reflection (v2) ─────────────────────────────────────
+    {
+      name: "tractioneye_record_reflection",
+      description: "Write a reflection entry to the log. Call after closing a position or at end of session. Entries are append-only in ~/.tractioneye/state/reflection_log.jsonl.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["trade_closed", "thesis_review", "session_summary", "lesson_learned"],
+            description: "Type of reflection entry"
+          },
+          trade: {
+            type: "object",
+            description: "Trade reflection (for trade_closed type)",
+            properties: {
+              tokenAddress: { type: "string" },
+              symbol: { type: "string" },
+              archetype: { type: "string" },
+              pnlPercent: { type: "number" },
+              holdDuration: { type: "string" },
+              exitReason: { type: "string" },
+              whatWorked: { type: "string" },
+              whatFailed: { type: "string" },
+              lessonForPlaybook: { type: "string" }
+            }
+          },
+          session: {
+            type: "object",
+            description: "Session summary (for session_summary type)",
+            properties: {
+              candidatesReviewed: { type: "number" },
+              tradesExecuted: { type: "number" },
+              marketRegime: { type: "string" },
+              keyObservation: { type: "string" }
+            }
+          },
+          lesson: {
+            type: "object",
+            description: "Lesson learned (for lesson_learned type)",
+            properties: {
+              rule: { type: "string" },
+              evidence: { type: "string" },
+              confidence: { type: "string", enum: ["low", "medium", "high"] },
+              affectsPlaybook: { type: ["string", "null"] }
+            }
+          }
+        },
+        required: ["type"],
+        additionalProperties: false
+      },
+      handler: async (args) => {
+        const { appendFileSync: appendFileSync2, mkdirSync: mkdirSync3 } = await import("fs");
+        const { reflectionLogPath: reflectionLogPath2, ensureStateDir: ensureStateDir2 } = await Promise.resolve().then(() => (init_config(), config_exports));
+        ensureStateDir2();
+        const entry = {
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          type: args["type"],
+          ...args["trade"] ? { trade: args["trade"] } : {},
+          ...args["session"] ? { session: args["session"] } : {},
+          ...args["lesson"] ? { lesson: args["lesson"] } : {}
+        };
+        appendFileSync2(reflectionLogPath2(), JSON.stringify(entry) + "\n", "utf-8");
+        return { success: true, entry };
+      }
+    },
+    // ── 15. read_risk_policy (v2) ──────────────────────────────────────
+    {
+      name: "tractioneye_read_risk_policy",
+      description: "Get current risk caps and limits. Agent cannot change hard policy \u2014 this is read-only. Includes: max positions, exposure cap, price impact limit, cooldown duration, default barriers.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      handler: async () => {
+        const config = readConfig();
+        return config.riskPolicy ?? DEFAULT_RISK_POLICY;
+      }
+    },
+    // ── 16. read_api_budget (v2) ────────────────────────────────────────
+    {
+      name: "tractioneye_read_api_budget",
+      description: "Get current API quota state. Shows gecko and dexscreener usage vs limits. Agent knows its budget.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      handler: async () => {
+        return {
+          gecko: {
+            name: "GeckoTerminal",
+            currentLimit: "5 req/60s",
+            note: "verify_candidate uses 2-4 calls, review_position uses 2 calls"
+          },
+          dex: {
+            name: "DexScreener",
+            currentLimit: "10 req/60s",
+            note: "getTokenPricesBatch handles up to 30 tokens in 1 request"
+          }
+        };
+      }
     }
   ];
 }
@@ -1445,27 +2556,752 @@ async function pollOperationStatus(client, operationId) {
   }
   return client.getOperationStatus(operationId);
 }
+
+// src/index.ts
+init_config();
+
+// src/position/barrier.ts
+var DEFAULT_INTERVAL_MS2 = 3e4;
+var BarrierManager = class {
+  constructor(dex, executeTradeCallback, onEvent, intervalMs = DEFAULT_INTERVAL_MS2) {
+    this.dex = dex;
+    this.executeTradeCallback = executeTradeCallback;
+    this.onEvent = onEvent;
+    this.intervalMs = intervalMs;
+    this.positions = /* @__PURE__ */ new Map();
+    this.timer = null;
+    this.running = false;
+  }
+  /** Register a position with barriers. */
+  addPosition(pos) {
+    this.positions.set(pos.tokenAddress, pos);
+  }
+  /** Remove a position from monitoring. */
+  removePosition(tokenAddress) {
+    this.positions.delete(tokenAddress);
+  }
+  /** Get all tracked positions. */
+  getPositions() {
+    return Array.from(this.positions.values());
+  }
+  /** Get a single position. */
+  getPosition(tokenAddress) {
+    return this.positions.get(tokenAddress);
+  }
+  /** Update barriers for an existing position. */
+  updateBarriers(tokenAddress, barriers) {
+    const pos = this.positions.get(tokenAddress);
+    if (!pos) return false;
+    pos.barriers = barriers;
+    return true;
+  }
+  /** Start the barrier evaluation loop. */
+  start() {
+    if (this.running) return;
+    this.running = true;
+    void this.tick();
+    this.timer = setInterval(() => void this.tick(), this.intervalMs);
+  }
+  /** Stop the barrier evaluation loop. */
+  stop() {
+    this.running = false;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+  get isRunning() {
+    return this.running;
+  }
+  /** Single evaluation tick: fetch batch prices & check all barriers. */
+  async tick() {
+    if (this.positions.size === 0) return;
+    const addresses = Array.from(this.positions.keys());
+    let priceMap;
+    try {
+      priceMap = await this.dex.getTokenPricesBatch(addresses);
+    } catch {
+      return;
+    }
+    for (const [addr, pos] of this.positions) {
+      const priceInfo = priceMap.get(addr);
+      if (!priceInfo?.priceUsd) continue;
+      const currentPrice = priceInfo.priceUsd;
+      const pnlPercent = (currentPrice - pos.entryPriceUsd) / pos.entryPriceUsd * 100;
+      if (pnlPercent > pos.peakPnlPercent) {
+        pos.peakPnlPercent = pnlPercent;
+      }
+      const event = this.evaluateBarriers(pos, currentPrice, pnlPercent);
+      if (event) {
+        this.onEvent?.(event);
+        try {
+          await this.executeTradeCallback(addr, "SELL", event.sellPercent);
+        } catch {
+          continue;
+        }
+        if (event.sellPercent >= 100) {
+          this.positions.delete(addr);
+        }
+      }
+    }
+  }
+  /**
+   * Evaluate all barriers for a position.
+   * Returns the first barrier that fires, or null if none.
+   * Priority: stop_loss > trailing_stop > time_limit > take_profit > partial_tp
+   */
+  evaluateBarriers(pos, currentPrice, pnlPercent) {
+    const b = pos.barriers;
+    const base = {
+      tokenAddress: pos.tokenAddress,
+      symbol: pos.symbol,
+      entryPriceUsd: pos.entryPriceUsd,
+      currentPriceUsd: currentPrice,
+      pnlPercent
+    };
+    if (pnlPercent <= -b.stopLossPercent) {
+      return {
+        ...base,
+        closeType: "stop_loss",
+        sellPercent: 100,
+        reason: `PnL ${pnlPercent.toFixed(1)}% hit stop loss at -${b.stopLossPercent}%`
+      };
+    }
+    if (b.trailingStop) {
+      if (!pos.trailingStopActivated && pnlPercent >= b.trailingStop.activationPercent) {
+        pos.trailingStopActivated = true;
+      }
+      if (pos.trailingStopActivated) {
+        const trailingStopLevel = pos.peakPnlPercent - b.trailingStop.deltaPercent;
+        if (pnlPercent <= trailingStopLevel && trailingStopLevel > 0) {
+          return {
+            ...base,
+            closeType: "trailing_stop",
+            sellPercent: 100,
+            reason: `Trailing stop: peak ${pos.peakPnlPercent.toFixed(1)}%, stop at ${trailingStopLevel.toFixed(1)}%, current ${pnlPercent.toFixed(1)}%`
+          };
+        }
+      }
+    }
+    if (b.timeLimitSeconds != null) {
+      const holdMs = Date.now() - new Date(pos.entryTimestamp).getTime();
+      if (holdMs >= b.timeLimitSeconds * 1e3) {
+        return {
+          ...base,
+          closeType: "time_limit",
+          sellPercent: 100,
+          reason: `Position held for ${Math.round(holdMs / 6e4)} minutes, time limit is ${Math.round(b.timeLimitSeconds / 60)} minutes`
+        };
+      }
+    }
+    if (pnlPercent >= b.takeProfitPercent) {
+      return {
+        ...base,
+        closeType: "take_profit",
+        sellPercent: 100,
+        reason: `PnL ${pnlPercent.toFixed(1)}% hit take profit at +${b.takeProfitPercent}%`
+      };
+    }
+    if (b.partialTp && !pos.partialTpTriggered && pnlPercent >= b.partialTp.triggerPercent) {
+      pos.partialTpTriggered = true;
+      return {
+        ...base,
+        closeType: "partial_tp",
+        sellPercent: b.partialTp.sellPercent,
+        reason: `Partial TP: PnL ${pnlPercent.toFixed(1)}% hit trigger at +${b.partialTp.triggerPercent}%, selling ${b.partialTp.sellPercent}%`
+      };
+    }
+    return null;
+  }
+};
+
+// src/quota/manager.ts
+var DEFAULT_GECKO_RPM = 5;
+var DEFAULT_DEX_RPM = 10;
+var WINDOW_MS = 6e4;
+var DEFAULT_ALLOCATION = {
+  gecko: { critical: 0.6, verify: 0.2, scout: 0, background: 0.2 },
+  dex: { critical: 0.3, verify: 0, scout: 0.4, background: 0.3 }
+};
+var QuotaManager = class {
+  constructor(geckoRpm = DEFAULT_GECKO_RPM, dexRpm = DEFAULT_DEX_RPM) {
+    this.agentLastActive = 0;
+    this.gecko = this.createTracker(geckoRpm, DEFAULT_ALLOCATION.gecko);
+    this.dex = this.createTracker(dexRpm, DEFAULT_ALLOCATION.dex);
+  }
+  createTracker(limit, allocation) {
+    return {
+      used: 0,
+      limit,
+      windowStartMs: Date.now(),
+      windowMs: WINDOW_MS,
+      allocation,
+      perQueue: { critical: 0, verify: 0, scout: 0, background: 0 },
+      overageCount: 0
+    };
+  }
+  /** Configure budget allocation for an API. */
+  configure(allocation) {
+    if (allocation.gecko) {
+      this.gecko.allocation = { ...this.gecko.allocation, ...allocation.gecko };
+    }
+    if (allocation.dex) {
+      this.dex.allocation = { ...this.dex.allocation, ...allocation.dex };
+    }
+  }
+  /**
+   * Acquire a slot for an API request.
+   * Returns immediately if budget available, waits if not.
+   */
+  async acquire(api, queue) {
+    const tracker = api === "gecko" ? this.gecko : this.dex;
+    this.maybeResetWindow(tracker);
+    const queueBudget = Math.floor(tracker.limit * tracker.allocation[queue]);
+    if (tracker.perQueue[queue] >= queueBudget && queueBudget > 0) {
+      const waitMs = tracker.windowStartMs + tracker.windowMs - Date.now();
+      if (waitMs > 0) {
+        await new Promise((r) => setTimeout(r, waitMs));
+        this.maybeResetWindow(tracker);
+      }
+    }
+    if (tracker.used >= tracker.limit) {
+      const waitMs = tracker.windowStartMs + tracker.windowMs - Date.now();
+      if (waitMs > 0) {
+        await new Promise((r) => setTimeout(r, waitMs));
+        this.maybeResetWindow(tracker);
+      }
+    }
+    tracker.used++;
+    tracker.perQueue[queue]++;
+  }
+  /** Record that a request was made (for external tracking). */
+  record(api, queue) {
+    const tracker = api === "gecko" ? this.gecko : this.dex;
+    this.maybeResetWindow(tracker);
+    tracker.used++;
+    tracker.perQueue[queue]++;
+  }
+  /** Report a 429 overage. Feedback from on429 callbacks. */
+  reportOverage(api) {
+    const tracker = api === "gecko" ? this.gecko : this.dex;
+    tracker.overageCount++;
+    console.warn(`[quota] 429 reported for ${api} (total overages: ${tracker.overageCount})`);
+  }
+  /** Get current budget state. */
+  getState() {
+    this.maybeResetWindow(this.gecko);
+    this.maybeResetWindow(this.dex);
+    return {
+      gecko: {
+        used: this.gecko.used,
+        limit: this.gecko.limit,
+        free: Math.max(0, this.gecko.limit - this.gecko.used),
+        windowResetAt: new Date(this.gecko.windowStartMs + this.gecko.windowMs).toISOString(),
+        perQueue: { ...this.gecko.perQueue }
+      },
+      dex: {
+        used: this.dex.used,
+        limit: this.dex.limit,
+        free: Math.max(0, this.dex.limit - this.dex.used),
+        windowResetAt: new Date(this.dex.windowStartMs + this.dex.windowMs).toISOString(),
+        perQueue: { ...this.dex.perQueue }
+      }
+    };
+  }
+  /** Mark agent as active (replaces session lock check). */
+  touchAgentActive() {
+    this.agentLastActive = Date.now();
+  }
+  /** Check if agent is active (within last 5 minutes). */
+  isAgentActive(timeoutMs = 5 * 6e4) {
+    return Date.now() - this.agentLastActive < timeoutMs;
+  }
+  maybeResetWindow(tracker) {
+    const now = Date.now();
+    if (now - tracker.windowStartMs >= tracker.windowMs) {
+      tracker.used = 0;
+      tracker.perQueue = { critical: 0, verify: 0, scout: 0, background: 0 };
+      tracker.windowStartMs = now;
+    }
+  }
+};
+
+// src/state/index.ts
+init_atomic();
+
+// src/state/market.ts
+var import_node_fs4 = require("fs");
+init_config();
+init_atomic();
+function readMarketState() {
+  try {
+    const raw = (0, import_node_fs4.readFileSync)(marketStatePath(), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function writeMarketState(state) {
+  atomicWriteJsonSync(marketStatePath(), state);
+  try {
+    const briefing = {
+      timestamp: state.updatedAt,
+      candidates: state.shortlist,
+      topLists: state.topLists,
+      portfolio: void 0,
+      strategy: void 0
+    };
+    atomicWriteJsonSync(briefingPath(), briefing);
+  } catch {
+  }
+}
+
+// src/state/candidates.ts
+var import_node_fs5 = require("fs");
+init_config();
+init_atomic();
+function readCandidateRegistry() {
+  try {
+    const raw = (0, import_node_fs5.readFileSync)(candidateRegistryPath(), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return { candidates: {} };
+  }
+}
+function writeCandidateRegistry(registry) {
+  atomicWriteJsonSync(candidateRegistryPath(), registry);
+}
+function upsertCandidate(registry, entry) {
+  registry.candidates[entry.tokenAddress] = entry;
+}
+function transitionCandidate(registry, tokenAddress, newState, extra) {
+  const candidate = registry.candidates[tokenAddress];
+  if (!candidate) return false;
+  candidate.state = newState;
+  candidate.lastUpdatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  if (extra?.verification) candidate.verification = extra.verification;
+  if (extra?.rejectionReason) candidate.rejectionReason = extra.rejectionReason;
+  if (extra?.archetype) candidate.archetype = extra.archetype;
+  return true;
+}
+function cleanupCandidates(registry) {
+  const now = Date.now();
+  let removed = 0;
+  for (const [addr, entry] of Object.entries(registry.candidates)) {
+    const ttl = new Date(entry.ttl).getTime();
+    if (now > ttl) {
+      delete registry.candidates[addr];
+      removed++;
+    }
+  }
+  return removed;
+}
+function createCandidateEntry(tokenAddress, poolAddress, symbol, dexId, tags) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const ttl = new Date(Date.now() + 24 * 60 * 6e4).toISOString();
+  return {
+    tokenAddress,
+    poolAddress,
+    symbol,
+    dexId,
+    state: "discovered",
+    discoveredAt: now,
+    lastUpdatedAt: now,
+    discoveryTags: tags,
+    archetype: null,
+    verification: null,
+    rejectionReason: null,
+    ttl
+  };
+}
+
+// src/state/portfolio.ts
+var import_node_fs6 = require("fs");
+init_config();
+init_atomic();
+function readPortfolioState() {
+  try {
+    const raw = (0, import_node_fs6.readFileSync)(portfolioStatePath(), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return { updatedAt: (/* @__PURE__ */ new Date()).toISOString(), positions: {} };
+  }
+}
+function writePortfolioState(state) {
+  state.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  atomicWriteJsonSync(portfolioStatePath(), state);
+}
+function addPosition(state, thesis) {
+  state.positions[thesis.tokenAddress] = thesis;
+}
+function updatePositionBarriers(state, tokenAddress, barriers) {
+  const pos = state.positions[tokenAddress];
+  if (!pos) return false;
+  pos.barriers = barriers;
+  return true;
+}
+function updateThesisStatus(state, tokenAddress, status) {
+  const pos = state.positions[tokenAddress];
+  if (!pos) return false;
+  pos.thesisStatus = status;
+  pos.lastReviewedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return true;
+}
+function recordExitEvent(state, tokenAddress, closeType, pnlPercent, soldPercent, reason) {
+  const pos = state.positions[tokenAddress];
+  if (!pos) return false;
+  pos.exitEvents.push({
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    type: closeType,
+    pnlPercent,
+    soldPercent,
+    reason
+  });
+  if (soldPercent >= 100) {
+    delete state.positions[tokenAddress];
+  }
+  return true;
+}
+
+// src/state/playbooks.ts
+var import_node_fs7 = require("fs");
+init_config();
+init_atomic();
+var DEX_DEFAULTS = {
+  ston_fi: {
+    entryThresholds: {
+      minBuyerDiversityRatio: 0.2,
+      minVolume1hUsd: 3e3,
+      minLiquidityUsd: 2e3
+    },
+    sizing: { maxPositionSizePercent: 15 },
+    exits: {
+      takeProfitPercent: 25,
+      stopLossPercent: 10,
+      timeLimitSeconds: 7200,
+      trailingStop: { activationPercent: 15, deltaPercent: 5 },
+      thesisReviewInterval: "PT10M"
+    }
+  },
+  dedust: {
+    entryThresholds: {
+      minBuyerDiversityRatio: 0.3,
+      minVolume1hUsd: 2e3,
+      minLiquidityUsd: 1500
+    },
+    sizing: { maxPositionSizePercent: 12 },
+    exits: {
+      takeProfitPercent: 20,
+      stopLossPercent: 12,
+      timeLimitSeconds: 5400,
+      trailingStop: { activationPercent: 10, deltaPercent: 4 },
+      thesisReviewInterval: "PT8M"
+    }
+  }
+};
+function defaultPlaybooks() {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const defaultStats = { totalTrades: 0, wins: 0, losses: 0, avgPnlPercent: 0, lastUpdated: now };
+  return {
+    updatedAt: now,
+    version: 1,
+    archetypes: {
+      organic_breakout: {
+        name: "organic_breakout",
+        description: "Genuine buying interest with accelerating volume and diverse buyers",
+        signals: [
+          { field: "buyPressure", condition: ">", threshold: 0.6 },
+          { field: "volumeAcceleration", condition: ">", threshold: 1.5 },
+          { field: "buyerAcceleration", condition: ">", threshold: 1.2 }
+        ],
+        params: {
+          entryThresholds: { minBuyerDiversity: 0.25, minVolume1h: 3e3, minGtScore: 30 },
+          sizing: { positionSizePercent: 10, maxPerToken: 15 },
+          exits: {
+            takeProfitPercent: 30,
+            stopLossPercent: 10,
+            timeLimitSeconds: 7200,
+            trailingStop: { activationPercent: 15, deltaPercent: 5 },
+            thesisHalfLife: "PT30M"
+          }
+        },
+        stats: defaultStats
+      },
+      paid_attention: {
+        name: "paid_attention",
+        description: "Token with paid boosts \u2014 traffic fades fast, tighter exits",
+        signals: [
+          { field: "boostTotalAmount", condition: ">", threshold: 0 },
+          { field: "volume1hUsd", condition: ">", threshold: 2e3 }
+        ],
+        params: {
+          entryThresholds: { minBuyerDiversity: 0.2, minVolume1h: 2e3, minGtScore: null },
+          sizing: { positionSizePercent: 8, maxPerToken: 12 },
+          exits: {
+            takeProfitPercent: 15,
+            stopLossPercent: 8,
+            timeLimitSeconds: 3600,
+            trailingStop: { activationPercent: 10, deltaPercent: 4 },
+            thesisHalfLife: "PT15M"
+          }
+        },
+        stats: defaultStats
+      },
+      cto_momentum: {
+        name: "cto_momentum",
+        description: "Community takeover with momentum \u2014 higher risk, reduced size",
+        signals: [
+          { field: "cto", condition: "===", threshold: true },
+          { field: "buyPressure", condition: ">", threshold: 0.55 }
+        ],
+        params: {
+          entryThresholds: { minBuyerDiversity: 0.2, minVolume1h: 1500, minGtScore: null },
+          sizing: { positionSizePercent: 6, maxPerToken: 10 },
+          exits: {
+            takeProfitPercent: 20,
+            stopLossPercent: 12,
+            timeLimitSeconds: 5400,
+            trailingStop: { activationPercent: 12, deltaPercent: 5 },
+            thesisHalfLife: "PT20M"
+          }
+        },
+        stats: defaultStats
+      }
+    }
+  };
+}
+function readPlaybooks() {
+  try {
+    const raw = (0, import_node_fs7.readFileSync)(playbooksPath(), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return defaultPlaybooks();
+  }
+}
+function writePlaybooks(playbooks) {
+  playbooks.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  playbooks.version++;
+  atomicWriteJsonSync(playbooksPath(), playbooks);
+}
+function updateArchetypeStats(playbooks, archetype, pnlPercent) {
+  const entry = playbooks.archetypes[archetype];
+  if (!entry) return false;
+  entry.stats.totalTrades++;
+  if (pnlPercent > 0) entry.stats.wins++;
+  else entry.stats.losses++;
+  const total = entry.stats.totalTrades;
+  entry.stats.avgPnlPercent = (entry.stats.avgPnlPercent * (total - 1) + pnlPercent) / total;
+  entry.stats.lastUpdated = (/* @__PURE__ */ new Date()).toISOString();
+  return true;
+}
+
+// src/state/reflections.ts
+var import_node_fs8 = require("fs");
+init_config();
+function appendReflection(entry) {
+  ensureStateDir();
+  (0, import_node_fs8.appendFileSync)(reflectionLogPath(), JSON.stringify(entry) + "\n", "utf-8");
+}
+function readReflections() {
+  try {
+    const raw = (0, import_node_fs8.readFileSync)(reflectionLogPath(), "utf-8");
+    return raw.trim().split("\n").filter((line) => line.length > 0).map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+function readReflectionsInRange(from, to) {
+  const entries = readReflections();
+  return entries.filter((e) => {
+    const ts = new Date(e.timestamp).getTime();
+    return ts >= from.getTime() && ts <= to.getTime();
+  });
+}
+
+// src/index.ts
+init_config();
+
+// src/eval/metrics.ts
+function calculateEvalMetrics(cooldownPreventedCount = 0) {
+  const reflections = readReflections();
+  const playbooks = readPlaybooks();
+  const closeTypeCounts = {};
+  const tradeReflections = reflections.filter((r) => r.type === "trade_closed" && r.trade);
+  for (const r of tradeReflections) {
+    if (r.trade?.exitReason) {
+      const closeType = r.trade.exitReason;
+      closeTypeCounts[closeType] = (closeTypeCounts[closeType] ?? 0) + 1;
+    }
+  }
+  const archetypeStats = {};
+  for (const [name, entry] of Object.entries(playbooks.archetypes)) {
+    if (entry.stats.totalTrades > 0) {
+      archetypeStats[name] = {
+        trades: entry.stats.totalTrades,
+        winRate: entry.stats.wins / entry.stats.totalTrades * 100,
+        avgPnl: entry.stats.avgPnlPercent
+      };
+    }
+  }
+  let totalProfit = 0;
+  let totalLoss = 0;
+  for (const r of tradeReflections) {
+    const pnl = r.trade?.pnlPercent ?? 0;
+    if (pnl > 0) totalProfit += pnl;
+    else totalLoss += Math.abs(pnl);
+  }
+  const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? Infinity : 0;
+  const thesisExits = tradeReflections.filter((r) => r.trade?.exitReason === "thesis_exit");
+  const thesisExitRate = tradeReflections.length > 0 ? thesisExits.length / tradeReflections.length * 100 : 0;
+  const thesisExitPnl = thesisExits.length > 0 ? thesisExits.reduce((sum, r) => sum + (r.trade?.pnlPercent ?? 0), 0) / thesisExits.length : 0;
+  let totalHoldMs = 0;
+  let holdCount = 0;
+  for (const r of tradeReflections) {
+    if (r.trade?.holdDuration) {
+      const match = r.trade.holdDuration.match(/(\d+)h/);
+      if (match) {
+        totalHoldMs += parseInt(match[1]) * 36e5;
+        holdCount++;
+      }
+    }
+  }
+  const avgHoldMs = holdCount > 0 ? totalHoldMs / holdCount : 0;
+  const avgHoldDuration = avgHoldMs > 0 ? `${Math.floor(avgHoldMs / 36e5)}h ${Math.floor(avgHoldMs % 36e5 / 6e4)}m` : "N/A";
+  const verifyAccuracy = 0;
+  const rejectAccuracy = 0;
+  const washDetectionRate = 0;
+  return {
+    verifyAccuracy,
+    rejectAccuracy,
+    washDetectionRate,
+    closeTypeCounts,
+    archetypeStats,
+    profitFactor,
+    avgVerifyLatencyMs: 0,
+    apiErrorRate: 0,
+    geckoUsagePercent: 0,
+    dexUsagePercent: 0,
+    thesisExitRate,
+    thesisExitPnl,
+    avgHoldDuration,
+    cooldownPreventedCount
+  };
+}
+function generateEvalReport(baseline, cooldownPreventedCount = 0) {
+  const current = calculateEvalMetrics(cooldownPreventedCount);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const comparisons = [];
+  const addComparison = (metric, currentVal, baselineVal) => {
+    let trend = "no_baseline";
+    let delta = null;
+    if (baselineVal != null) {
+      delta = currentVal - baselineVal;
+      if (Math.abs(delta) < 1) trend = "stable";
+      else if (delta > 0) trend = "improving";
+      else trend = "degrading";
+    }
+    comparisons.push({ metric, current: currentVal, baseline: baselineVal, delta, trend });
+  };
+  addComparison("profitFactor", current.profitFactor, null);
+  addComparison("thesisExitRate", current.thesisExitRate, null);
+  addComparison("cooldownPreventedCount", current.cooldownPreventedCount, null);
+  const alerts = [];
+  const slCount = current.closeTypeCounts["stop_loss"] ?? 0;
+  const totalCloses = Object.values(current.closeTypeCounts).reduce((s, v) => s + (v ?? 0), 0);
+  if (totalCloses > 5 && slCount / totalCloses > 0.8) {
+    alerts.push("WARNING: 80%+ of closes are stop losses \u2014 strategy may be failing");
+  }
+  if (current.profitFactor < 1 && totalCloses > 10) {
+    alerts.push("WARNING: Profit factor < 1 \u2014 losing more than winning");
+  }
+  return {
+    generatedAt: now,
+    period: { from: baseline.capturedAt, to: now },
+    current,
+    baseline,
+    comparison: comparisons,
+    alerts
+  };
+}
+function captureBaseline(winRate, avgPnlPercent, maxDrawdown, tradesPerWeek) {
+  return {
+    capturedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    period: "v1_final",
+    metrics: {
+      winRate,
+      avgPnlPercent,
+      maxDrawdown,
+      tradesPerWeek
+    }
+  };
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  BarrierManager,
+  CooldownManager,
   DEFAULT_DATA_DIR,
+  DEFAULT_RISK_POLICY,
+  DEX_DEFAULTS,
   DexScreenerClient,
   GeckoTerminalClient,
   PositionManager,
+  QuotaManager,
   RateLimiter,
   RequestPriority,
   Simulator,
   TokenScreener,
   TractionEyeClient,
   TractionEyeHttpError,
+  addPosition,
+  appendReflection,
+  atomicWriteJsonSync,
   briefingPath,
+  buildConfidence,
+  calculateEvalMetrics,
+  candidateRegistryPath,
+  captureBaseline,
+  checkOrganicity,
+  checkSafety,
+  cleanVerifyCache,
+  cleanupCandidates,
+  computeSignals,
   configPath,
+  cooldownPath,
+  createCandidateEntry,
   createTractionEyeTools,
   ensureDataDir,
+  ensureStateDir,
+  evalReportPath,
+  evalTracesDir,
+  generateEvalReport,
+  getCachedVerifyData,
   isAgentSessionActive,
+  marketStatePath,
+  playbooksPath,
+  portfolioStatePath,
   readBriefing,
+  readCandidateRegistry,
   readConfig,
+  readMarketState,
+  readPlaybooks,
+  readPortfolioState,
+  readReflections,
+  readReflectionsInRange,
+  recordExitEvent,
+  reflectionLogPath,
   sessionLockPath,
+  stateDirPath,
   touchSessionLock,
+  transitionCandidate,
+  updateArchetypeStats,
   updateConfig,
-  writeConfig
+  updatePositionBarriers,
+  updateThesisStatus,
+  upsertCandidate,
+  verifyCandidate,
+  writeCandidateRegistry,
+  writeConfig,
+  writeMarketState,
+  writePlaybooks,
+  writePortfolioState
 });
