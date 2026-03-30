@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 /**
- * TractionEye Agent Daemon
+ * TractionEye Agent Daemon v2
  *
- * Single process, two functions:
- * 1. TP/SL monitoring — continuous price polling, auto-sells on trigger
- * 2. Screening + briefing — periodic market scan → briefing.json
+ * Stateful runtime with microcycles (Section III):
+ * 1. Price Sentry (30s) — batch price check, triple barrier evaluation
+ * 2. Scout Refresh (3min) — pool discovery, junk filter, shortlist update
+ * 3. Thesis Check Light (60s) — DexScreener-only momentum check (0 gecko calls)
+ * 4. Thesis Check Deep (10min) — GeckoTerminal buyer diversity + safety re-check
  *
- * Reads config from ~/.tractioneye/config.json
- * Writes briefing to ~/.tractioneye/briefing.json
+ * Deep-Think Triggers (invoke LLM via OpenClaw):
+ * - shortlist_ready: scout found new verified candidates
+ * - thesis_break: position thesis broken
+ * - barrier_triggered: TP/SL/trailing fired
+ * - scheduled: heartbeat every 10-15 min
+ *
+ * See SPEC-V2.md Sections III, VI-A.
  */
 
 import { writeFileSync, watchFile } from 'node:fs';
@@ -15,49 +22,81 @@ import { execFile } from 'node:child_process';
 import {
   TractionEyeClient,
   DexScreenerClient,
-  PositionManager,
+  BarrierManager,
+  CooldownManager,
+  QuotaManager,
   readConfig,
   briefingPath,
   configPath,
   ensureDataDir,
+  ensureStateDir,
   isAgentSessionActive,
-  type PositionEvent,
+  DEFAULT_RISK_POLICY,
+  writeMarketState,
+  readPortfolioState,
+  writePortfolioState,
+  addPosition as addPortfolioPosition,
+  recordExitEvent,
+  readPlaybooks,
+  writePlaybooks,
+  updateArchetypeStats,
+  type BarrierEvent,
   type PoolInfo,
   type ScreeningFilter,
   type DaemonConfig,
-  type TpSlConfig,
+  type RiskPolicy,
+  type ShortlistEntry,
+  type MarketRegime,
+  type MarketState,
+  type CloseType,
+  type DaemonEvent,
 } from '../dist/index.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const DEFAULT_SCREENING_INTERVAL_MS = 180_000; // 3 minutes
-const TP_SL_POLL_INTERVAL_MS = 30_000; // 30 seconds
+const PRICE_SENTRY_INTERVAL_MS = 30_000;       // 30 seconds
+const SCOUT_INTERVAL_MS = 180_000;              // 3 minutes
+const THESIS_LIGHT_INTERVAL_MS = 60_000;        // 60 seconds
+const THESIS_DEEP_INTERVAL_MS = 600_000;        // 10 minutes
+const HEARTBEAT_INTERVAL_MS = 900_000;          // 15 minutes
 
 /** Hardcoded junk filter — pools that don't pass are discarded before agent criteria. */
 const JUNK_FILTER: ScreeningFilter = {
   minLiquidityUsd: 1000,
-  minVolume24hUsd: 0.01, // > 0
+  minVolume24hUsd: 0.01,
 };
+
+const TOP_LIST_SIZE = 10;
 
 // ── State ──────────────────────────────────────────────────────────────────
 
 let config: DaemonConfig;
+let riskPolicy: RiskPolicy;
 let client: TractionEyeClient | null = null;
 let dex: DexScreenerClient;
-let screener: TokenScreener;
-let positionManager: PositionManager | null = null;
-let screeningTimer: ReturnType<typeof setInterval> | null = null;
+let barrierManager: BarrierManager | null = null;
+let cooldownManager: CooldownManager;
+let quotaManager: QuotaManager;
 let lastExecutionResult: { operationId: string; amountNano: string } | null = null;
+
+// Timers
+let scoutTimer: ReturnType<typeof setInterval> | null = null;
+let thesisLightTimer: ReturnType<typeof setInterval> | null = null;
+let thesisDeepTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+// Event queue
+const eventQueue: DaemonEvent[] = [];
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   ensureDataDir();
+  ensureStateDir();
   config = readConfig();
 
   if (!config.agentToken) {
     console.log('[daemon] No agentToken in config. Waiting for agent to set it...');
-    // Watch config for changes — agent will write agentToken on first run
     watchFile(configPath(), { interval: 5000 }, () => {
       config = readConfig();
       if (config.agentToken) {
@@ -81,42 +120,44 @@ async function startup(): Promise<void> {
   }
 
   dex = client.dex;
-  screener = client.screener;
+  riskPolicy = config.riskPolicy ?? DEFAULT_RISK_POLICY;
+  cooldownManager = new CooldownManager();
+  quotaManager = new QuotaManager();
 
-  // Start TP/SL monitoring
-  startTpSlMonitor();
+  // Set up 429 callbacks
+  client.gecko.setOn429Callback((path) => {
+    quotaManager.reportOverage('gecko');
+    console.warn(`[daemon] Gecko 429 on ${path}`);
+  });
+  client.dex.setOn429Callback((path) => {
+    quotaManager.reportOverage('dex');
+    console.warn(`[daemon] DexScreener 429 on ${path}`);
+  });
 
-  // Start screening loop
-  startScreeningLoop();
+  // Start all microcycles
+  startBarrierMonitor();
+  startScoutLoop();
+  startThesisCheckLight();
+  startThesisCheckDeep();
+  startHeartbeat();
 
-  // Watch config file for TP/SL parameter changes
+  // Watch config file for changes
   watchFile(configPath(), { interval: 5000 }, () => {
     console.log('[daemon] Config changed, reloading...');
     config = readConfig();
-    restartTpSlMonitor();
+    riskPolicy = config.riskPolicy ?? DEFAULT_RISK_POLICY;
+    restartBarrierMonitor();
   });
 
-  console.log('[daemon] Running.');
+  console.log('[daemon] v2 Runtime started — all microcycles active.');
 }
 
-// ── TP/SL Monitoring ───────────────────────────────────────────────────────
+// ── Price Sentry + Triple Barrier (30s) ──────────────────────────────────
 
-function buildPositionConfig(tpSl?: TpSlConfig) {
-  const defaults = tpSl?.defaults ?? { takeProfitPercent: 25, stopLossPercent: 8 };
-  return {
-    takeProfitPercent: defaults.takeProfitPercent,
-    stopLossPercent: defaults.stopLossPercent,
-    partialTpTrigger: defaults.partialTakeProfitPercent,
-    partialTpPercent: defaults.partialTakeProfitSellPercent,
-  };
-}
-
-function startTpSlMonitor(): void {
+function startBarrierMonitor(): void {
   if (!client) return;
 
-  const posConfig = buildPositionConfig(config.tpSl);
-
-  const executor = async (tokenAddress: string, _action: 'BUY' | 'SELL', sellPercent: number) => {
+  const executor = async (tokenAddress: string, _action: 'SELL', sellPercent: number) => {
     if (!client) return;
     const portfolio = await client.getPortfolio();
     const token = portfolio.tokens.find((t) => t.address === tokenAddress);
@@ -134,36 +175,68 @@ function startTpSlMonitor(): void {
       amountNano: sellQty.toString(),
     });
 
-    // Store execution result for notifyAgent
     lastExecutionResult = {
       operationId: execution.operationId,
       amountNano: sellQty.toString(),
     };
   };
 
-  const onEvent = (event: PositionEvent) => {
-    console.log(`[daemon] ${event.type}: ${event.symbol} ${event.changePercent.toFixed(2)}%`);
+  const onEvent = (event: BarrierEvent) => {
+    console.log(`[daemon] ${event.closeType}: ${event.symbol} ${event.pnlPercent.toFixed(2)}% — ${event.reason}`);
+
+    // Record exit in portfolio state
+    const portfolioState = readPortfolioState();
+    recordExitEvent(
+      portfolioState,
+      event.tokenAddress,
+      event.closeType,
+      event.pnlPercent,
+      event.sellPercent,
+      event.reason,
+    );
+    writePortfolioState(portfolioState);
+
+    // Record cooldown for losing exits
+    cooldownManager.recordClose(event.tokenAddress, event.closeType);
+
+    // Update playbook stats
+    const playbooks = readPlaybooks();
+    const pos = barrierManager?.getPosition(event.tokenAddress);
+    if (pos) {
+      updateArchetypeStats(playbooks, pos.symbol, event.pnlPercent);
+      writePlaybooks(playbooks);
+    }
+
+    // Emit daemon event
+    const daemonEvent: DaemonEvent = {
+      type: 'barrier_triggered',
+      position: portfolioState.positions[event.tokenAddress] ?? {} as any,
+      closeType: event.closeType,
+      pnlPercent: event.pnlPercent,
+    };
+    eventQueue.push(daemonEvent);
+
+    // Notify agent
     notifyAgent(event, lastExecutionResult);
     lastExecutionResult = null;
   };
 
-  positionManager = new PositionManager(
+  barrierManager = new BarrierManager(
     dex,
-    posConfig,
     executor,
     onEvent,
-    { intervalMs: TP_SL_POLL_INTERVAL_MS },
+    PRICE_SENTRY_INTERVAL_MS,
   );
 
   // Load positions from portfolio
   void loadPositions().then(() => {
-    positionManager?.start();
-    console.log('[daemon] TP/SL monitor started');
+    barrierManager?.start();
+    console.log('[daemon] Barrier monitor started (30s interval)');
   });
 }
 
 async function loadPositions(): Promise<void> {
-  if (!client || !positionManager) return;
+  if (!client || !barrierManager) return;
   try {
     const portfolio = await client.getPortfolio();
     for (const t of portfolio.tokens) {
@@ -178,11 +251,16 @@ async function loadPositions(): Promise<void> {
           : 1;
         const entryPriceUsd = tokenPrice.priceUsd * ratio;
 
-        positionManager.addPosition({
+        barrierManager.addPosition({
           tokenAddress: t.address,
+          poolAddress: '',
           symbol: t.symbol,
           entryPriceUsd,
+          entryTimestamp: new Date().toISOString(),
           quantity: t.quantity,
+          barriers: riskPolicy.defaultBarriers,
+          peakPnlPercent: 0,
+          trailingStopActivated: false,
           partialTpTriggered: false,
         });
       } catch {
@@ -194,92 +272,41 @@ async function loadPositions(): Promise<void> {
   }
 }
 
-function restartTpSlMonitor(): void {
-  if (positionManager?.isRunning) {
-    // Preserve existing positions
-    const positions = positionManager.getPositions();
-    positionManager.stop();
-    startTpSlMonitor();
-    // Re-add preserved positions
+function restartBarrierMonitor(): void {
+  if (barrierManager?.isRunning) {
+    const positions = barrierManager.getPositions();
+    barrierManager.stop();
+    startBarrierMonitor();
     for (const pos of positions) {
-      positionManager?.addPosition(pos);
+      barrierManager?.addPosition(pos);
     }
   }
 }
 
-function notifyAgent(
-  event: PositionEvent,
-  execution?: { operationId: string; amountNano: string } | null,
-): void {
-  const sessionId = config.sessionId;
-  const openclawPath = config.openclawPath ?? 'openclaw';
-  if (!sessionId) {
-    console.log('[daemon] No sessionId configured, skipping agent notification');
-    return;
-  }
+// ── Scout Refresh (3min) ─────────────────────────────────────────────────
 
-  const payload = JSON.stringify({
-    event: 'tp_sl_triggered',
-    type: event.type,
-    tokenAddress: event.tokenAddress,
-    symbol: event.symbol,
-    entryPriceUsd: event.entryPriceUsd,
-    exitPriceUsd: event.currentPriceUsd,
-    pnlPercent: event.changePercent,
-    soldPercent: event.sellPercent,
-    amountNano: execution?.amountNano ?? null,
-    operationId: execution?.operationId ?? null,
-    timestamp: new Date().toISOString(),
-  });
-
-  const message = `Save to today's daily memory as a trade event: ${payload}`;
-
-  execFile(openclawPath, ['agent', '--session-id', sessionId, '--message', message], (err) => {
-    if (err) {
-      console.error('[daemon] Failed to notify agent:', err.message);
-    }
-  });
+function startScoutLoop(): void {
+  void runScout();
+  scoutTimer = setInterval(() => void runScout(), SCOUT_INTERVAL_MS);
+  console.log(`[daemon] Scout loop started (${SCOUT_INTERVAL_MS / 1000}s interval)`);
 }
 
-// ── Screening + Briefing ───────────────────────────────────────────────────
-
-/** Exclude pools paired with USDT — not useful as trading candidates. */
-function isUsdtPool(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.includes('usdt') || lower.includes('usd₮');
-}
-
-const TOP_LIST_SIZE = 10;
-
-function startScreeningLoop(): void {
-  const interval = config.screening?.intervalMs ?? DEFAULT_SCREENING_INTERVAL_MS;
-  // Run immediately
-  void runScreening();
-  screeningTimer = setInterval(() => void runScreening(), interval);
-  console.log(`[daemon] Screening loop started (interval: ${interval}ms)`);
-}
-
-async function runScreening(): Promise<void> {
+async function runScout(): Promise<void> {
   if (!client) return;
 
-  if (isAgentSessionActive()) {
-    console.log('[daemon] Agent session active, skipping screening cycle');
+  if (isAgentSessionActive() || quotaManager.isAgentActive()) {
+    console.log('[daemon] Agent active, skipping scout cycle');
     return;
   }
 
   try {
-    // Fetch pools from 3 DexScreener sources (was 5 GeckoTerminal calls)
-    const [
-      topPools,
-      trendingPools,
-      newPools,
-    ] = await Promise.all([
+    const [topPools, trendingPools, newPools] = await Promise.all([
       dex.getTopPools(),
       dex.getTrendingPools(),
       dex.getNewPools(),
     ]);
 
-    // Tag each pool by source, then deduplicate — merge tags on collision
+    // Tag and deduplicate
     const taggedSources: Array<[PoolInfo[], string]> = [
       [topPools, 'top_volume'],
       [trendingPools, 'trending'],
@@ -303,13 +330,12 @@ async function runScreening(): Promise<void> {
     const filtered = [...poolMap.values()].filter((p) => {
       if (p.reserveInUsd < (JUNK_FILTER.minLiquidityUsd ?? 0)) return false;
       if (p.volume24hUsd <= 0) return false;
-      // lockedLiquidityPercent: only reject if explicitly 0 (not null — DexScreener doesn't provide this field)
       if (p.lockedLiquidityPercent != null && p.lockedLiquidityPercent === 0) return false;
       if (isUsdtPool(p.name)) return false;
       return true;
     });
 
-    // Deduplicate by base token — keep the pool with highest liquidity
+    // Deduplicate by base token
     const byToken = new Map<string, PoolInfo>();
     for (const p of filtered) {
       const tokenKey = p.baseTokenId ?? p.name;
@@ -329,7 +355,36 @@ async function runScreening(): Promise<void> {
       candidates = candidates.filter((pool) => passesFilter(pool, agentFilter));
     }
 
-    // Build top-lists by client-side sorting (no extra API requests)
+    // Build shortlist entries with computed signals
+    const shortlist: ShortlistEntry[] = candidates.map((p) => {
+      const vol6hPerH = p.volume6hUsd / 6;
+      const volumeAcceleration = vol6hPerH >= 100 / 6 ? p.volume1hUsd / vol6hPerH : null;
+      const totalTxns1h = p.buys1h + p.sells1h;
+      const buyPressure = totalTxns1h >= 10 ? p.buys1h / totalTxns1h : null;
+
+      return {
+        poolAddress: p.poolAddress,
+        tokenAddress: p.baseTokenId ?? '',
+        symbol: p.name.split(' / ')[0] ?? '',
+        dexId: p.dexId,
+        tags: p.tags,
+        reserveInUsd: p.reserveInUsd,
+        volume1hUsd: p.volume1hUsd,
+        priceChange1h: p.priceChange1h,
+        uniqueBuyers1h: null, // Only from GeckoTerminal
+        boostTotalAmount: p.boostTotalAmount,
+        cto: p.cto,
+        buys1h: p.buys1h,
+        sells1h: p.sells1h,
+        volumeAcceleration,
+        buyPressure,
+        shortlistedAt: new Date().toISOString(),
+        archetype: classifyArchetype(p),
+        verificationStatus: 'pending',
+      };
+    });
+
+    // Build top-lists
     const topByVolume = [...candidates].sort((a, b) => b.volume24hUsd - a.volume24hUsd).slice(0, TOP_LIST_SIZE);
     const topByLiquidity = [...candidates].sort((a, b) => b.reserveInUsd - a.reserveInUsd).slice(0, TOP_LIST_SIZE);
     const topByFdv = [...candidates].filter((p) => p.fdvUsd != null).sort((a, b) => (b.fdvUsd ?? 0) - (a.fdvUsd ?? 0)).slice(0, TOP_LIST_SIZE);
@@ -343,11 +398,29 @@ async function runScreening(): Promise<void> {
       client.getStrategySummary(),
     ]);
 
-    // Write enriched briefing
-    const briefing = {
-      timestamp: new Date().toISOString(),
-      candidates,
-      tops: {
+    // Determine market regime
+    const avgVolAccel = shortlist
+      .filter((s) => s.volumeAcceleration != null)
+      .reduce((sum, s) => sum + (s.volumeAcceleration ?? 0), 0) / Math.max(1, shortlist.filter((s) => s.volumeAcceleration != null).length);
+    const priceSpread = Math.max(...candidates.map((p) => p.priceChange1h)) - Math.min(...candidates.map((p) => p.priceChange1h));
+    let marketRegime: MarketRegime = 'quiet';
+    if (priceSpread > 20) marketRegime = 'volatile';
+    else if (avgVolAccel > 1.5) marketRegime = 'active';
+
+    // Get TON price
+    const tonPrice = await dex.getTokenPrice('EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c');
+
+    // Get cooldown tokens
+    const cooldownTokens = cooldownManager.getActiveCooldowns(riskPolicy.cooldownAfterExitMinutes);
+
+    // Get quota state
+    const quotaState = quotaManager.getState();
+
+    // Write market_state.json (also writes briefing.json in parallel)
+    const marketState: MarketState = {
+      updatedAt: new Date().toISOString(),
+      shortlist,
+      topLists: {
         byVolume: topByVolume.map((p) => p.poolAddress),
         byLiquidity: topByLiquidity.map((p) => p.poolAddress),
         byFdv: topByFdv.map((p) => p.poolAddress),
@@ -355,18 +428,211 @@ async function runScreening(): Promise<void> {
         gainers24h: topGainers24h.map((p) => p.poolAddress),
         byTxCount: topByTxCount.map((p) => p.poolAddress),
       },
+      marketRegime,
+      tonPriceUsd: tonPrice.priceUsd ?? 0,
+      pendingVerifications: shortlist.filter((s) => s.verificationStatus === 'pending').map((s) => s.tokenAddress),
+      openPositionReviews: [],
+      cooldownTokens,
+      apiUsage: {
+        gecko: { used: quotaState.gecko.used, limit: quotaState.gecko.limit, windowResetAt: quotaState.gecko.windowResetAt },
+        dex: { used: quotaState.dex.used, limit: quotaState.dex.limit, windowResetAt: quotaState.dex.windowResetAt },
+      },
+    };
+    writeMarketState(marketState);
+
+    // Also write legacy briefing.json for backward compatibility
+    const briefing = {
+      timestamp: marketState.updatedAt,
+      candidates,
+      tops: marketState.topLists,
       portfolio,
       strategy,
     };
-
     writeFileSync(briefingPath(), JSON.stringify(briefing, null, 2) + '\n', 'utf-8');
-    console.log(`[daemon] Briefing updated: ${candidates.length} candidates from ${poolMap.size} pools`);
+
+    console.log(`[daemon] Scout: ${shortlist.length} candidates, regime=${marketRegime}`);
+
+    // Emit shortlist_ready if new candidates found
+    if (shortlist.length > 0) {
+      eventQueue.push({ type: 'shortlist_ready', candidates: shortlist });
+    }
   } catch (err) {
-    console.error('[daemon] Screening error:', err);
+    console.error('[daemon] Scout error:', err);
   }
 }
 
-/** Inline filter check matching ScreeningFilter logic from screener.ts */
+// ── Thesis Check Light (60s, DexScreener only, 0 gecko calls) ────────────
+
+function startThesisCheckLight(): void {
+  thesisLightTimer = setInterval(() => void runThesisCheckLight(), THESIS_LIGHT_INTERVAL_MS);
+  console.log(`[daemon] Thesis check light started (${THESIS_LIGHT_INTERVAL_MS / 1000}s interval)`);
+}
+
+async function runThesisCheckLight(): Promise<void> {
+  if (!barrierManager || barrierManager.getPositions().length === 0) return;
+
+  try {
+    const positions = barrierManager.getPositions();
+    const addresses = positions.map((p) => p.tokenAddress);
+    const prices = await dex.getTokenPricesBatch(addresses);
+
+    const portfolioState = readPortfolioState();
+    let stateChanged = false;
+
+    for (const pos of positions) {
+      const priceInfo = prices.get(pos.tokenAddress);
+      if (!priceInfo?.priceUsd) continue;
+
+      const pnlPercent = ((priceInfo.priceUsd - pos.entryPriceUsd) / pos.entryPriceUsd) * 100;
+      const thesis = portfolioState.positions[pos.tokenAddress];
+      if (!thesis) continue;
+
+      // Check momentum deceleration: volume < 30% of entry AND price falling
+      // We don't have real-time volume here (would need DexScreener pair call),
+      // so just check PnL trend for light check
+      if (pnlPercent < -5 && thesis.thesisStatus === 'intact') {
+        thesis.thesisStatus = 'weakening';
+        thesis.lastReviewedAt = new Date().toISOString();
+        stateChanged = true;
+        console.log(`[daemon] Thesis weakening: ${pos.symbol} at ${pnlPercent.toFixed(1)}%`);
+      }
+    }
+
+    if (stateChanged) {
+      writePortfolioState(portfolioState);
+    }
+  } catch (err) {
+    console.error('[daemon] Thesis check light error:', err);
+  }
+}
+
+// ── Thesis Check Deep (10min, 2 gecko calls per position) ────────────────
+
+function startThesisCheckDeep(): void {
+  thesisDeepTimer = setInterval(() => void runThesisCheckDeep(), THESIS_DEEP_INTERVAL_MS);
+  console.log(`[daemon] Thesis check deep started (${THESIS_DEEP_INTERVAL_MS / 1000}s interval)`);
+}
+
+async function runThesisCheckDeep(): Promise<void> {
+  if (!client || !barrierManager) return;
+  const positions = barrierManager.getPositions();
+  if (positions.length === 0) return;
+
+  const portfolioState = readPortfolioState();
+  let stateChanged = false;
+
+  // Process one position per cycle to conserve gecko budget
+  const posToReview = positions[0]; // Round-robin could be added later
+  if (!posToReview || !posToReview.poolAddress) return;
+
+  try {
+    // 2 gecko calls: getPoolInfo for buyer diversity, getTokenInfo for safety re-check
+    const poolInfo = await client.gecko.getPoolInfo(posToReview.poolAddress);
+    const thesis = portfolioState.positions[posToReview.tokenAddress];
+    if (!thesis) return;
+
+    // Check buyer diversity collapse
+    if (thesis.thesisMetrics.entryBuyerDiversity1h > 0) {
+      const currentDiversity = poolInfo.transactions.h1.buys > 0
+        ? poolInfo.transactions.h1.buyers / poolInfo.transactions.h1.buys
+        : 0;
+      if (currentDiversity < thesis.thesisMetrics.entryBuyerDiversity1h * 0.3) {
+        thesis.thesisStatus = 'broken';
+        thesis.lastReviewedAt = new Date().toISOString();
+        stateChanged = true;
+        console.log(`[daemon] Thesis BROKEN (buyer diversity collapse): ${posToReview.symbol}`);
+
+        eventQueue.push({
+          type: 'thesis_break',
+          position: thesis,
+          reason: `Buyer diversity collapsed from ${thesis.thesisMetrics.entryBuyerDiversity1h.toFixed(2)} to ${currentDiversity.toFixed(2)}`,
+        });
+      }
+    }
+
+    // Check sustained net sell
+    const netBuy = poolInfo.transactions.h1.buys - poolInfo.transactions.h1.sells;
+    if (netBuy < 0 && thesis.thesisStatus === 'intact') {
+      thesis.thesisStatus = 'weakening';
+      thesis.lastReviewedAt = new Date().toISOString();
+      stateChanged = true;
+    }
+
+    if (stateChanged) {
+      writePortfolioState(portfolioState);
+    }
+  } catch (err) {
+    console.error(`[daemon] Thesis deep check error for ${posToReview.symbol}:`, err);
+  }
+}
+
+// ── Heartbeat (15min) ────────────────────────────────────────────────────
+
+function startHeartbeat(): void {
+  heartbeatTimer = setInterval(() => {
+    eventQueue.push({ type: 'deep_think_scheduled', reason: 'timer' });
+    console.log('[daemon] Heartbeat — deep think scheduled');
+  }, HEARTBEAT_INTERVAL_MS);
+  console.log(`[daemon] Heartbeat started (${HEARTBEAT_INTERVAL_MS / 60000}min interval)`);
+}
+
+// ── Archetype Classification (deterministic) ─────────────────────────────
+
+function classifyArchetype(pool: PoolInfo): string | null {
+  if (pool.boostTotalAmount > 0) return 'paid_attention';
+  if (pool.cto) return 'cto_momentum';
+
+  const totalTxns1h = pool.buys1h + pool.sells1h;
+  const buyPressure = totalTxns1h > 0 ? pool.buys1h / totalTxns1h : 0;
+  if (buyPressure > 0.6 && pool.volume1hUsd > 3000) return 'organic_breakout';
+
+  return null;
+}
+
+// ── Agent Notification ───────────────────────────────────────────────────
+
+function notifyAgent(
+  event: BarrierEvent,
+  execution?: { operationId: string; amountNano: string } | null,
+): void {
+  const sessionId = config.sessionId;
+  const openclawPath = config.openclawPath ?? 'openclaw';
+  if (!sessionId) {
+    console.log('[daemon] No sessionId configured, skipping agent notification');
+    return;
+  }
+
+  const payload = JSON.stringify({
+    event: 'barrier_triggered',
+    closeType: event.closeType,
+    tokenAddress: event.tokenAddress,
+    symbol: event.symbol,
+    entryPriceUsd: event.entryPriceUsd,
+    exitPriceUsd: event.currentPriceUsd,
+    pnlPercent: event.pnlPercent,
+    soldPercent: event.sellPercent,
+    reason: event.reason,
+    amountNano: execution?.amountNano ?? null,
+    operationId: execution?.operationId ?? null,
+    timestamp: new Date().toISOString(),
+  });
+
+  const message = `Save to today's daily memory as a trade event: ${payload}`;
+
+  execFile(openclawPath, ['agent', '--session-id', sessionId, '--message', message], (err) => {
+    if (err) {
+      console.error('[daemon] Failed to notify agent:', err.message);
+    }
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function isUsdtPool(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.includes('usdt') || lower.includes('usd₮');
+}
+
 function passesFilter(pool: PoolInfo, f: ScreeningFilter): boolean {
   if (f.minLiquidityUsd != null && pool.reserveInUsd < f.minLiquidityUsd) return false;
   if (f.maxLiquidityUsd != null && pool.reserveInUsd > f.maxLiquidityUsd) return false;
