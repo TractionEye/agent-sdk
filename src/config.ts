@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { RiskPolicy } from './types/v2.js';
+import { atomicWriteJsonSync } from './state/atomic.js';
 
 /** Default data directory for TractionEye config and briefing files. */
 export const DEFAULT_DATA_DIR =
@@ -14,6 +16,46 @@ export function configPath(): string {
 /** Path to the briefing file written by the daemon. */
 export function briefingPath(): string {
   return join(DEFAULT_DATA_DIR, 'briefing.json');
+}
+
+// ── State file paths (Section X) ─────────────────────────────────────
+
+const STATE_DIR = join(DEFAULT_DATA_DIR, 'state');
+
+export function stateDirPath(): string {
+  return STATE_DIR;
+}
+
+export function marketStatePath(): string {
+  return join(STATE_DIR, 'market_state.json');
+}
+
+export function candidateRegistryPath(): string {
+  return join(STATE_DIR, 'candidate_registry.json');
+}
+
+export function portfolioStatePath(): string {
+  return join(STATE_DIR, 'portfolio_state.json');
+}
+
+export function playbooksPath(): string {
+  return join(STATE_DIR, 'playbooks.json');
+}
+
+export function cooldownPath(): string {
+  return join(STATE_DIR, 'cooldown.json');
+}
+
+export function evalReportPath(): string {
+  return join(STATE_DIR, 'eval_report.json');
+}
+
+export function reflectionLogPath(): string {
+  return join(STATE_DIR, 'reflection_log.jsonl');
+}
+
+export function evalTracesDir(): string {
+  return join(STATE_DIR, 'eval_traces');
 }
 
 export type TpSlDefaults = {
@@ -41,11 +83,17 @@ export type DaemonConfig = {
     intervalMs?: number;
     filter?: ScreeningFilterConfig;
   };
+  riskPolicy?: RiskPolicy;
 };
 
 /** Ensure data directory exists. */
 export function ensureDataDir(): void {
   mkdirSync(DEFAULT_DATA_DIR, { recursive: true });
+}
+
+/** Ensure state subdirectory exists. */
+export function ensureStateDir(): void {
+  mkdirSync(stateDirPath(), { recursive: true });
 }
 
 /** Read the config file. Returns empty config if file doesn't exist. */
@@ -58,10 +106,10 @@ export function readConfig(): DaemonConfig {
   }
 }
 
-/** Write the config file (full replace). */
+/** Write the config file (full replace). Uses atomic write for crash safety. */
 export function writeConfig(config: DaemonConfig): void {
   ensureDataDir();
-  writeFileSync(configPath(), JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  atomicWriteJsonSync(configPath(), config);
 }
 
 /** Merge partial updates into the existing config and write. */

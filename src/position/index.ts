@@ -6,3 +6,12 @@ export type {
   TrackedPosition,
   PositionEvent,
 } from './types.js';
+
+// v2: Triple Barrier
+export { BarrierManager } from './barrier.js';
+export type {
+  BarrierPosition,
+  BarrierEvent,
+  BarrierTradeExecutor,
+  BarrierEventHandler,
+} from './barrier.js';

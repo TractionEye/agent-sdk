@@ -66,6 +66,79 @@ export type {
   PositionEvent,
 } from './position/index.js';
 
+// v2: Triple Barrier position management
+export { BarrierManager } from './position/index.js';
+export type {
+  BarrierPosition,
+  BarrierEvent,
+  BarrierTradeExecutor,
+  BarrierEventHandler,
+} from './position/index.js';
+
 // Simulation
 export { Simulator } from './simulation/index.js';
 export type { VirtualTrade, SimulationResult } from './simulation/index.js';
+
+// v2: Safety gates
+export { checkSafety, checkOrganicity } from './safety/index.js';
+export type { SafetyContext } from './safety/index.js';
+
+// v2: State management
+export { atomicWriteJsonSync, CooldownManager } from './state/index.js';
+
+// v2: Config extensions
+export {
+  stateDirPath,
+  marketStatePath,
+  candidateRegistryPath,
+  portfolioStatePath,
+  playbooksPath,
+  cooldownPath,
+  evalReportPath,
+  reflectionLogPath,
+  evalTracesDir,
+  ensureStateDir,
+} from './config.js';
+
+// v2: Types
+export type {
+  CloseType,
+  TripleBarrierConfig,
+  RiskPolicy,
+  SafetyRejectId,
+  PenaltyId,
+  SafetyCheckResult,
+  OrganicitySignal,
+  OrganicityVerdict,
+  ComputedSignals,
+  ConfidenceSummary,
+  GeckoTokenInfo,
+  GeckoPoolInfo,
+  VerificationResult,
+  CooldownEntry,
+  CooldownState,
+  PositionThesis,
+  PortfolioState,
+  ShortlistEntry,
+  MarketRegime,
+  MarketState,
+  CandidateState,
+  CandidateEntry,
+  CandidateRegistry,
+  ReflectionEntry,
+  PlaybookEntry,
+  Playbooks,
+  DexDefaults,
+  DaemonEvent,
+  PositionAction,
+  CreatePositionAction,
+  StopPositionAction,
+  StorePositionAction,
+} from './types/v2.js';
+export type {
+  EvalMetrics,
+  EvalTrace,
+  EvalReport,
+  Baseline,
+} from './types/v2.js';
+export { DEFAULT_RISK_POLICY } from './types/v2.js';

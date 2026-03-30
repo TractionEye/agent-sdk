@@ -7,4 +7,6 @@ export type {
   OhlcvResponse,
   OhlcvMeta,
   OhlcvTimeframe,
+  GeckoTokenInfoResponse,
+  GeckoPoolInfoResponse,
 } from './types.js';

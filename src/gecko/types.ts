@@ -31,6 +31,35 @@ export type PoolInfo = {
   baseTokenId?: string;
   /** Tags indicating how this pool was discovered (e.g. 'top_volume', 'trending_1h', 'new'). */
   tags: string[];
+
+  // ---- v2 fields (Section V) ----
+
+  /** DEX identifier (e.g. 'stonfi', 'dedust'). From DexScreener dexId. */
+  dexId: string;
+  /** Token price relative to TON. From DexScreener priceNative. */
+  priceNative: string;
+  /** Buys in last 5 minutes. */
+  buys5m: number;
+  /** Sells in last 5 minutes. */
+  sells5m: number;
+  /** Buys in last 1 hour. */
+  buys1h: number;
+  /** Sells in last 1 hour. */
+  sells1h: number;
+  /** Buys in last 6 hours. */
+  buys6h: number;
+  /** Sells in last 6 hours. */
+  sells6h: number;
+  /** 5-minute volume in USD. */
+  volume5mUsd: number;
+  /** Social links from token info. */
+  socials: { type: string; url: string }[];
+  /** Website URLs from token info. */
+  websites: string[];
+  /** Total boost amount (from /token-boosts endpoint). 0 if not boosted. */
+  boostTotalAmount: number;
+  /** Community Takeover token (from /token-profiles endpoint). */
+  cto: boolean;
 };
 
 export type TokenPrice = {
@@ -109,3 +138,100 @@ export type OhlcvResponse = {
 };
 
 export type OhlcvTimeframe = 'day' | 'hour' | 'minute';
+
+// ---- Token Info endpoint (v2) ----
+
+export type GeckoTokenInfoResponse = {
+  data: {
+    id: string;
+    type: string;
+    attributes: {
+      address: string;
+      name: string;
+      symbol: string;
+      decimals: number;
+      gt_score: number | null;
+      gt_score_details: {
+        pool: number;
+        transaction: number;
+        creation: number;
+        info: number;
+        holders: number;
+      } | null;
+      holders: {
+        count: number;
+        distribution_percentage: {
+          top_10: string;
+          '11_30': string;
+          '31_50': string;
+          rest: string;
+        };
+        last_updated: string;
+      } | null;
+      is_honeypot: 'yes' | 'unknown' | null;
+      mint_authority: string | null;
+      freeze_authority: string | null;
+      websites: string[] | null;
+      discord_url: string | null;
+      telegram_handle: string | null;
+      twitter_handle: string | null;
+      description: string | null;
+    };
+  };
+};
+
+// ---- Pool Info endpoint (v2) ----
+
+type GeckoTxnPeriod = {
+  buys: number;
+  sells: number;
+  buyers: number;
+  sellers: number;
+};
+
+export type GeckoPoolInfoResponse = {
+  data: {
+    id: string;
+    type: string;
+    attributes: {
+      address: string;
+      name: string;
+      pool_name: string;
+      base_token_price_usd: string;
+      reserve_in_usd: string;
+      locked_liquidity_percentage: number | null;
+      fdv_usd: string | null;
+      market_cap_usd: string | null;
+      price_change_percentage: {
+        m5: string;
+        m15: string;
+        m30: string;
+        h1: string;
+        h6: string;
+        h24: string;
+      };
+      volume_usd: {
+        m5: string;
+        m15: string;
+        m30: string;
+        h1: string;
+        h6: string;
+        h24: string;
+      };
+      transactions: {
+        m5: GeckoTxnPeriod;
+        m15: GeckoTxnPeriod;
+        m30: GeckoTxnPeriod;
+        h1: GeckoTxnPeriod;
+        h6: GeckoTxnPeriod;
+        h24: GeckoTxnPeriod;
+      };
+      pool_created_at: string;
+    };
+    relationships: {
+      base_token: { data: { id: string; type: string } };
+      quote_token: { data: { id: string; type: string } };
+      dex: { data: { id: string; type: string } };
+    };
+  };
+};
