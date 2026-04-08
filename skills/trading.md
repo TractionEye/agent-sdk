@@ -50,8 +50,7 @@ After configuring parameters:
    - minTransactions24h: 20
    These are starting values — adjust based on results over sessions.
 2. Read risk policy via `read_risk_policy` to understand limits
-3. Create a cron for automated trading sessions:
-   `openclaw cron add --every Nm --session-id <session-id> --message "Trading session. Follow the v2 trading session algorithm from the TractionEye skill."`
+3. Set up automated trading sessions via your LLM runtime's scheduling mechanism (cron, interval, or manual trigger).
 4. Tell the user: "Done. Here are the parameters: [list]. Safety gates and barriers are active. You can adjust any setting or describe your own strategy."
 
 ## Trading Session Algorithm (v2)
@@ -69,9 +68,9 @@ Read your daily memory for today:
 
 ### Step 2. Get Briefing and Status
 
-Call two tools:
+Call three tools:
 
-- **`read_briefing`** — Returns market state: shortlisted candidates with computed signals (volumeAcceleration, buyPressure), archetypes, cooldown tokens, pending verifications, top-lists, market regime (active/quiet/volatile), API usage.
+- **`read_briefing`** — Market state: shortlisted candidates with computed signals (volumeAcceleration, buyPressure), archetypes, cooldown tokens, pending verifications, top-5 lists, market regime (active/quiet/volatile), API usage. Does NOT include portfolio/strategy — use `get_status` for that.
 - **`get_status`** — Strategy PnL, balance, win rate, drawdown, current positions.
 - **`read_api_budget`** — Check how many API calls are available.
 
@@ -106,7 +105,7 @@ This runs the 4-call safety + organicity pipeline:
 1. Token safety: honeypot, mint/freeze authority, gt_score, holders
 2. Pool health: unique buyers/sellers, locked liquidity, volume granularity
 3. Trade flow: wallet concentration, buy/sell overlap (wash detection)
-4. Price structure: OHLCV candles, trend analysis
+4. Price structure: hourly candles → numeric momentum metrics
 
 Uses 2-4 GeckoTerminal calls (2 if recently verified, 4 if fresh).
 
@@ -116,6 +115,7 @@ Uses 2-4 GeckoTerminal calls (2 if recently verified, 4 if fresh).
 - `organicity.verdict === 'suspicious'` → Proceed with caution, position will be size-reduced.
 - `confidence.score` → Informational. Higher = more signals confirm. Use alongside narrative.
 - `computedSignals` → volumeAcceleration, buyPressure, buyerAcceleration.
+- `momentum` → see "On momentum metrics" in Guidelines.
 
 ### Step 4. Decision and Purchase
 
@@ -174,18 +174,31 @@ The daemon sends a message with JSON `event: "barrier_triggered"` containing: cl
 
 ## Guidelines and Lessons
 
-**On candles** — Determine trend direction, whether price movement is confirmed by volume, how volatile the price is.
+**On momentum metrics** — `verify_candidate` returns numeric metrics from hourly candles:
+- `volumeRatio1h` / `volumeRatio5h` — ratio of recent volume to earlier average. >2.0 = volume doubling, <0.5 = volume dying. Compare 1h and 5h to see if acceleration is building or fading.
+- `priceChange1h` / `priceChange5h` — price change in %. Combined with volumeRatio: rising price + rising volume = strong signal, rising price + falling volume = weak/unsustainable.
+- `avgCandleRange1h` / `avgCandleRange5h` — average (high-low)/close per candle in %. Measures volatility. High range (>5%) = risky but opportunity for trailing stop. Low range (<1%) = stale, may not move.
+
+These complement DexScreener data (priceChange 5m/15m/30m from briefing) — together they cover all timeframes from 5 minutes to 5 hours.
 
 **On organicity** — The verify_candidate pipeline checks this automatically. Pay attention to the signals: buyer_diversity_ratio < 0.2, wallet_overlap > 50%, and top3_concentration > 70% are strong wash indicators.
 
-**On signals** — volumeAcceleration > 2.0 with buyPressure > 0.6 is a strong entry signal. buyerAcceleration > 1.5 (only from verify) confirms organic growth. Decelerating volume with falling price = exit warning.
+**On signals** — volumeAcceleration > 2.0 with buyPressure > 0.6 is a strong entry signal. buyerAcceleration > 1.5 (only from verify) confirms organic growth. volumeRatio1h < 0.5 with falling priceChange1h = exit warning.
 
 **On archetypes** — Different token types need different barrier configs. paid_attention tokens fade fast (tighter time limits). organic_breakout tokens benefit from trailing stops. cto_momentum is highest risk (reduced position size built-in via CTO_TOKEN penalty).
 
-**On timeframes** — Compare priceChange across 5m, 1h, 6h, 24h. Aligned movement across timeframes is more reliable. A token up 1h but down 6h may be a dead cat bounce.
+**On timeframes** — Compare across all timeframes — aligned movement is more reliable. A token up 1h but down 6h may be a dead cat bounce.
 
 **On tags** — Multi-tag candidates (top_volume + trending + high transactions) are fundamentally stronger signals than single-tag candidates. Track and verify this pattern.
 
 **On trailing stops** — The trailing stop is your best tool for capturing extended runs. Set activation at a level that confirms the thesis, and delta tight enough to protect profit but not so tight that normal volatility triggers it.
 
 These guidelines evolve. Only verified lessons confirmed by trading results are added here.
+
+## Data Sources by Timeframe
+
+- **5m, 15m, 30m** — DexScreener via `read_briefing` and `screen_tokens`
+- **1h, 5h** — OHLCV candle analysis via `verify_candidate` momentum metrics
+- **6h, 24h** — DexScreener via `read_briefing` and `screen_tokens`
+
+All trading-relevant data is available. `find` returns compact 20-field pool data for quick lookup — use `verify_candidate` for full analysis.

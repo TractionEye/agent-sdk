@@ -323,9 +323,13 @@ type VerificationResult = {
     };
     organicity: OrganicityVerdict;
     momentum: {
-        volumeTrend: 'accelerating' | 'stable' | 'decelerating';
         buyPressure: number;
-        priceAction: 'uptrend' | 'sideways' | 'downtrend';
+        volumeRatio1h: number;
+        volumeRatio5h: number;
+        priceChange1h: number;
+        priceChange5h: number;
+        avgCandleRange1h: number;
+        avgCandleRange5h: number;
         ohlcv: OhlcvCandle[];
     };
     execution: {
@@ -343,6 +347,18 @@ type VerificationResult = {
         geckoCallsUsed: number;
         timestamp: string;
     };
+};
+type StoredMomentum = {
+    buyPressure: number;
+    volumeRatio1h: number;
+    volumeRatio5h: number;
+    priceChange1h: number;
+    priceChange5h: number;
+    avgCandleRange1h: number;
+    avgCandleRange5h: number;
+};
+type StoredVerificationResult = Omit<VerificationResult, 'momentum'> & {
+    momentum: StoredMomentum;
 };
 type CooldownEntry = {
     tokenAddress: string;
@@ -456,7 +472,7 @@ type CandidateEntry = {
     lastUpdatedAt: string;
     discoveryTags: string[];
     archetype: string | null;
-    verification: VerificationResult | null;
+    verification: StoredVerificationResult | null;
     rejectionReason: string | null;
     ttl: string;
 };
@@ -1538,6 +1554,55 @@ declare function readReflections(): ReflectionEntry[];
 declare function readReflectionsInRange(from: Date, to: Date): ReflectionEntry[];
 
 /**
+ * Tool response projections.
+ * Strips raw data (OHLCV candles, trade arrays, full PoolInfo) from tool responses
+ * to reduce LLM token consumption while preserving all actionable information.
+ */
+
+type FullProjectedPoolInfo = Omit<PoolInfo, 'name' | 'socials' | 'websites' | 'priceNative' | 'baseTokenPriceUsd'> & {
+    symbol: string;
+    tokenAddress: string;
+};
+type CompactPoolInfo = {
+    poolAddress: string;
+    tokenAddress: string;
+    symbol: string;
+    dexId: string;
+    tags: string[];
+    reserveInUsd: number;
+    fdvUsd: number | null;
+    marketCapUsd: number | null;
+    volume1hUsd: number;
+    volume24hUsd: number;
+    priceChange1h: number;
+    priceChange24h: number;
+    buys1h: number;
+    sells1h: number;
+    buySellRatio: number;
+    uniqueBuyers1h: number;
+    lockedLiquidityPercent: number | null;
+    boostTotalAmount: number;
+    cto: boolean;
+    createdAt: string;
+};
+type MarketBriefing = {
+    updatedAt: string;
+    marketRegime: MarketRegime;
+    tonPriceUsd: number;
+    candidates: ShortlistEntry[];
+    topLists: MarketState['topLists'];
+    pendingVerifications: string[];
+    openPositionReviews: MarketState['openPositionReviews'];
+    cooldownTokens: MarketState['cooldownTokens'];
+    apiUsage: MarketState['apiUsage'];
+};
+type SlimOrganicity = {
+    verdict: OrganicityVerdict['verdict'];
+    score: number;
+    failedSignals: string[];
+};
+
+/**
  * Eval Block (Section XIV).
  * Extended metrics calculated from Agent Kit's own data.
  * Base PnL comes from TractionEye backend (not duplicated here).
@@ -1558,4 +1623,4 @@ declare function generateEvalReport(baseline: Baseline, cooldownPreventedCount?:
  */
 declare function captureBaseline(winRate: number, avgPnlPercent: number, maxDrawdown: number, tradesPerWeek: number): Baseline;
 
-export { type AvailableToken, type BarrierEvent, type BarrierEventHandler, BarrierManager, type BarrierPosition, type BarrierTradeExecutor, type Baseline, type CandidateEntry, type CandidateRegistry, type CandidateState, type CloseType, type ComputedSignals, type ConfidenceSummary, type CooldownEntry, CooldownManager, type CooldownState, type CreatePositionAction, DEFAULT_DATA_DIR, DEFAULT_RISK_POLICY, DEX_DEFAULTS, type DaemonConfig, type DaemonEvent, type DexDefaults, type DexPair, DexScreenerClient, type EvalMetrics, type EvalReport, type EvalTrace, type GeckoPoolInfo, GeckoTerminalClient, type GeckoTokenInfo, type MarketRegime, type MarketState, type MonitorConfig, type OhlcvCandle, type OhlcvMeta, type OhlcvResponse, type OhlcvTimeframe, type OperationStatus, type OperationStatusType, type OrganicitySignal, type OrganicityVerdict, type PenaltyId, type PlaybookEntry, type Playbooks, type PoolInfo, type PortfolioState, type PortfolioSummary, type PositionAction, type PositionConfig, type PositionEvent, PositionManager, type PositionThesis, type QuotaBudget, QuotaManager, type QuotaQueue, RateLimiter, type ReflectionEntry, RequestPriority, type RiskPolicy, type SafetyCheckResult, type SafetyContext, type SafetyRejectId, type ScreeningConfig, type ScreeningFilter, type ScreeningSource, type ShortlistEntry, type SimulationResult, Simulator, type StopPositionAction, type StorePositionAction, type StrategySummary, type TokenPrice, TokenScreener, type TokenSummary, type TpSlConfig, type TpSlDefaults, type TrackedPosition, TractionEyeClient, type TractionEyeClientConfig, TractionEyeHttpError, type TradeAction, type TradeExecution, type TradeExecutionRequest, type TradeInfo, type TradePreview, type TradePreviewRequest, type TripleBarrierConfig, type ValidationOutcome, type VerificationResult, type VirtualTrade, addPosition, appendReflection, atomicWriteJsonSync, briefingPath, buildConfidence, calculateEvalMetrics, candidateRegistryPath, captureBaseline, checkOrganicity, checkSafety, cleanVerifyCache, cleanupCandidates, computeSignals, configPath, cooldownPath, createCandidateEntry, createTractionEyeTools, ensureDataDir, ensureStateDir, evalReportPath, evalTracesDir, generateEvalReport, getCachedVerifyData, isAgentSessionActive, marketStatePath, playbooksPath, portfolioStatePath, readBriefing, readCandidateRegistry, readConfig, readMarketState, readPlaybooks, readPortfolioState, readReflections, readReflectionsInRange, recordExitEvent, reflectionLogPath, sessionLockPath, stateDirPath, touchSessionLock, transitionCandidate, updateArchetypeStats, updateConfig, updatePositionBarriers, updateThesisStatus, upsertCandidate, verifyCandidate, writeCandidateRegistry, writeConfig, writeMarketState, writePlaybooks, writePortfolioState };
+export { type AvailableToken, type BarrierEvent, type BarrierEventHandler, BarrierManager, type BarrierPosition, type BarrierTradeExecutor, type Baseline, type CandidateEntry, type CandidateRegistry, type CandidateState, type CloseType, type CompactPoolInfo, type ComputedSignals, type ConfidenceSummary, type CooldownEntry, CooldownManager, type CooldownState, type CreatePositionAction, DEFAULT_DATA_DIR, DEFAULT_RISK_POLICY, DEX_DEFAULTS, type DaemonConfig, type DaemonEvent, type DexDefaults, type DexPair, DexScreenerClient, type EvalMetrics, type EvalReport, type EvalTrace, type FullProjectedPoolInfo, type GeckoPoolInfo, GeckoTerminalClient, type GeckoTokenInfo, type MarketBriefing, type MarketRegime, type MarketState, type MonitorConfig, type OhlcvCandle, type OhlcvMeta, type OhlcvResponse, type OhlcvTimeframe, type OperationStatus, type OperationStatusType, type OrganicitySignal, type OrganicityVerdict, type PenaltyId, type PlaybookEntry, type Playbooks, type PoolInfo, type PortfolioState, type PortfolioSummary, type PositionAction, type PositionConfig, type PositionEvent, PositionManager, type PositionThesis, type QuotaBudget, QuotaManager, type QuotaQueue, RateLimiter, type ReflectionEntry, RequestPriority, type RiskPolicy, type SafetyCheckResult, type SafetyContext, type SafetyRejectId, type ScreeningConfig, type ScreeningFilter, type ScreeningSource, type ShortlistEntry, type SimulationResult, Simulator, type SlimOrganicity, type StopPositionAction, type StorePositionAction, type StoredMomentum, type StoredVerificationResult, type StrategySummary, type TokenPrice, TokenScreener, type TokenSummary, type TpSlConfig, type TpSlDefaults, type TrackedPosition, TractionEyeClient, type TractionEyeClientConfig, TractionEyeHttpError, type TradeAction, type TradeExecution, type TradeExecutionRequest, type TradeInfo, type TradePreview, type TradePreviewRequest, type TripleBarrierConfig, type ValidationOutcome, type VerificationResult, type VirtualTrade, addPosition, appendReflection, atomicWriteJsonSync, briefingPath, buildConfidence, calculateEvalMetrics, candidateRegistryPath, captureBaseline, checkOrganicity, checkSafety, cleanVerifyCache, cleanupCandidates, computeSignals, configPath, cooldownPath, createCandidateEntry, createTractionEyeTools, ensureDataDir, ensureStateDir, evalReportPath, evalTracesDir, generateEvalReport, getCachedVerifyData, isAgentSessionActive, marketStatePath, playbooksPath, portfolioStatePath, readBriefing, readCandidateRegistry, readConfig, readMarketState, readPlaybooks, readPortfolioState, readReflections, readReflectionsInRange, recordExitEvent, reflectionLogPath, sessionLockPath, stateDirPath, touchSessionLock, transitionCandidate, updateArchetypeStats, updateConfig, updatePositionBarriers, updateThesisStatus, upsertCandidate, verifyCandidate, writeCandidateRegistry, writeConfig, writeMarketState, writePlaybooks, writePortfolioState };

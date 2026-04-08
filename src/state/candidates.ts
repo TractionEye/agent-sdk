@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { candidateRegistryPath } from '../config.js';
 import { atomicWriteJsonSync } from './atomic.js';
+import { projectVerificationResult } from '../tools/projection.js';
 import type { CandidateRegistry, CandidateEntry, CandidateState, VerificationResult } from '../types/v2.js';
 
 /** Read candidate registry. Returns empty registry if file doesn't exist. */
@@ -48,7 +49,7 @@ export function transitionCandidate(
   candidate.state = newState;
   candidate.lastUpdatedAt = new Date().toISOString();
 
-  if (extra?.verification) candidate.verification = extra.verification;
+  if (extra?.verification) candidate.verification = projectVerificationResult(extra.verification);
   if (extra?.rejectionReason) candidate.rejectionReason = extra.rejectionReason;
   if (extra?.archetype) candidate.archetype = extra.archetype;
 

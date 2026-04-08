@@ -105,8 +105,6 @@ export async function verifyCandidate(
 
   // ---- Momentum analysis ----
   const candles = ohlcvResp.candles;
-  const volumeTrend = determineVolumeTrend(candles);
-  const priceAction = determinePriceAction(candles);
   const buyPressureVal = poolInfo.transactions.h1.buys + poolInfo.transactions.h1.sells > 0
     ? poolInfo.transactions.h1.buys / (poolInfo.transactions.h1.buys + poolInfo.transactions.h1.sells)
     : 0;
@@ -178,9 +176,13 @@ export async function verifyCandidate(
     },
     organicity,
     momentum: {
-      volumeTrend,
       buyPressure: buyPressureVal,
-      priceAction,
+      volumeRatio1h: computeVolumeRatio(candles, 1),
+      volumeRatio5h: computeVolumeRatio(candles, 5),
+      priceChange1h: computePriceChange(candles, 1),
+      priceChange5h: computePriceChange(candles, 5),
+      avgCandleRange1h: computeAvgCandleRange(candles, 1),
+      avgCandleRange5h: computeAvgCandleRange(candles, 5),
       ohlcv: candles,
     },
     execution: {
@@ -203,31 +205,29 @@ export async function verifyCandidate(
 
 // ---- Helpers ----
 
-function determineVolumeTrend(candles: OhlcvCandle[]): 'accelerating' | 'stable' | 'decelerating' {
-  if (candles.length < 4) return 'stable';
-  const recent = candles.slice(-3);
-  const earlier = candles.slice(-6, -3);
-  if (earlier.length === 0) return 'stable';
-
+function computeVolumeRatio(candles: OhlcvCandle[], recentCount: number): number {
+  if (candles.length < recentCount + 1) return 1;
+  const recent = candles.slice(-recentCount);
+  const earlier = candles.slice(0, -recentCount);
+  if (earlier.length === 0) return 1;
   const recentAvg = recent.reduce((s, c) => s + c.volume, 0) / recent.length;
   const earlierAvg = earlier.reduce((s, c) => s + c.volume, 0) / earlier.length;
-
-  if (earlierAvg < 1) return 'stable';
-  const ratio = recentAvg / earlierAvg;
-  if (ratio > 1.5) return 'accelerating';
-  if (ratio < 0.5) return 'decelerating';
-  return 'stable';
+  if (earlierAvg < 1) return 1;
+  return Math.round((recentAvg / earlierAvg) * 100) / 100;
 }
 
-function determinePriceAction(candles: OhlcvCandle[]): 'uptrend' | 'sideways' | 'downtrend' {
-  if (candles.length < 3) return 'sideways';
-  const recent = candles.slice(-5);
-  const first = recent[0].close;
-  const last = recent[recent.length - 1].close;
+function computePriceChange(candles: OhlcvCandle[], count: number): number {
+  if (candles.length < 2) return 0;
+  const slice = candles.slice(-count);
+  const first = slice[0].close;
+  const last = slice[slice.length - 1].close;
+  if (first === 0) return 0;
+  return Math.round(((last - first) / first) * 10000) / 100;
+}
 
-  if (first === 0) return 'sideways';
-  const changePct = ((last - first) / first) * 100;
-  if (changePct > 5) return 'uptrend';
-  if (changePct < -5) return 'downtrend';
-  return 'sideways';
+function computeAvgCandleRange(candles: OhlcvCandle[], count: number): number {
+  const slice = candles.slice(-count);
+  if (slice.length === 0) return 0;
+  const ranges = slice.map(c => c.close > 0 ? ((c.high - c.low) / c.close) * 100 : 0);
+  return Math.round((ranges.reduce((s, r) => s + r, 0) / ranges.length) * 100) / 100;
 }

@@ -165,6 +165,8 @@ export type {
   CreatePositionAction,
   StopPositionAction,
   StorePositionAction,
+  StoredMomentum,
+  StoredVerificationResult,
 } from './types/v2.js';
 export type {
   EvalMetrics,
@@ -172,6 +174,14 @@ export type {
   EvalReport,
   Baseline,
 } from './types/v2.js';
+
+// v2: Projection types
+export type {
+  FullProjectedPoolInfo,
+  CompactPoolInfo,
+  MarketBriefing,
+  SlimOrganicity,
+} from './tools/projection.js';
 
 // v2: Eval
 export { calculateEvalMetrics, generateEvalReport, captureBaseline } from './eval/index.js';

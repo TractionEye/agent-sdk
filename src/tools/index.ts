@@ -1,6 +1,5 @@
 import type { TractionEyeClient } from '../client.js';
 import type { ScreeningSource } from '../screening/types.js';
-import type { OhlcvTimeframe } from '../gecko/types.js';
 import type { TripleBarrierConfig } from '../types/v2.js';
 import {
   readBriefing,
@@ -9,6 +8,8 @@ import {
   ensureDataDir,
   touchSessionLock,
 } from '../config.js';
+import { readMarketState } from '../state/market.js';
+import { projectPoolInfoFull, projectPoolInfoCompact, projectVerificationResult, projectMarketState, projectOrganicity } from './projection.js';
 import { verifyCandidate, getCachedVerifyData } from '../verify/index.js';
 import { checkSafety } from '../safety/index.js';
 import { DEFAULT_RISK_POLICY } from '../types/v2.js';
@@ -32,12 +33,15 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_read_briefing',
       description:
-        'Call this FIRST on every trading session tick. Returns market candidates collected from multiple perspectives (volume leaders, trending 5m/1h for catching early growth, most active by transactions, newly created), current portfolio, and strategy performance. Each candidate has tags showing how it was discovered — a pool appearing in several categories simultaneously may indicate a stronger signal. The briefing also includes top-lists sorted by volume, liquidity, FDV, transaction count, and price gainers (1h, 24h) — use these different views to compare, form hypotheses about what makes a good candidate, and verify your assumptions across sessions.',
+        'Market briefing: candidates, regime, TON price, top-lists, cooldowns, API usage. Call FIRST each tick.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       handler: async () => {
         touchSessionLock();
+        const state = readMarketState();
+        if (state) return projectMarketState(state);
+        // Fallback: try legacy briefing.json (first run / migration)
         const briefing = readBriefing();
-        if (!briefing) return { error: 'No briefing file found. Is the daemon running?' };
+        if (!briefing) return { error: 'No market state found. Is the daemon running?' };
         return briefing;
       },
     },
@@ -46,7 +50,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_verify_candidate',
       description:
-        'Full verification of a trading candidate. Runs 4-call pipeline: token safety (honeypot/mint/freeze), pool health (unique buyers, liquidity), trade flow analysis (whale detection, wash check), OHLCV price structure. Returns safety verdict, organicity check, momentum signals, confidence score, and penalty breakdown. Call AFTER read_briefing, BEFORE buy_token. Uses 2-4 GeckoTerminal API requests (2 if recently verified, 4 if fresh).',
+        'Full 4-call GeckoTerminal verification: safety, organicity, momentum, confidence. Call AFTER read_briefing, BEFORE buy_token. Uses 2-4 gecko calls.',
       parameters: {
         type: 'object',
         properties: {
@@ -65,81 +69,14 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
         const dexId = (args['dexId'] as string) ?? '';
         const poolCreatedAt = args['poolCreatedAt'] as string | undefined;
 
-        return verifyCandidate(
+        const result = await verifyCandidate(
           client.gecko,
           tokenAddress,
           poolAddress,
           dexId,
           poolCreatedAt,
         );
-      },
-    },
-
-    // ── 2b. analyze_pool (deprecated alias) ────────────────────────────
-    {
-      name: 'tractioneye_analyze_pool',
-      description:
-        '[DEPRECATED — use tractioneye_verify_candidate instead] Deep-analyze a candidate pool.',
-      parameters: {
-        type: 'object',
-        properties: {
-          poolAddress: { type: 'string', description: 'Pool address to analyze' },
-          tokenAddress: { type: 'string', description: 'Token address (required for full verify)' },
-          ohlcvTimeframe: {
-            type: 'string',
-            enum: ['day', 'hour', 'minute'],
-            description: 'OHLCV timeframe (default: hour)',
-          },
-          ohlcvLimit: { type: 'number', description: 'Number of candles (default: 30)' },
-          minTradeVolumeUsd: {
-            type: 'number',
-            description: 'Only return trades above this USD volume (whale filter)',
-          },
-        },
-        required: ['poolAddress'],
-        additionalProperties: false,
-      },
-      handler: async (args) => {
-        touchSessionLock();
-        const poolAddress = args['poolAddress'] as string;
-        const tokenAddress = args['tokenAddress'] as string | undefined;
-
-        // If tokenAddress provided, use full verify pipeline
-        if (tokenAddress) {
-          return verifyCandidate(client.gecko, tokenAddress, poolAddress, '');
-        }
-
-        // Legacy fallback: trades + OHLCV only
-        const timeframe = (args['ohlcvTimeframe'] as OhlcvTimeframe) ?? 'hour';
-        const limit = (args['ohlcvLimit'] as number) ?? 30;
-        const minVol = args['minTradeVolumeUsd'] as number | undefined;
-
-        const trades = await client.gecko.getPoolTrades(
-          poolAddress,
-          minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : undefined,
-        );
-        const ohlcv = await client.gecko.getPoolOhlcv(poolAddress, timeframe, limit);
-
-        const walletVolume = new Map<string, number>();
-        for (const t of trades) {
-          walletVolume.set(t.txFromAddress, (walletVolume.get(t.txFromAddress) ?? 0) + t.volumeInUsd);
-        }
-        const totalVolume = trades.reduce((s, t) => s + t.volumeInUsd, 0);
-        const topWallets = [...walletVolume.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 10)
-          .map(([address, volume]) => ({
-            address,
-            volumeUsd: volume,
-            percentOfTotal: totalVolume > 0 ? Math.round((volume / totalVolume) * 10000) / 100 : 0,
-          }));
-
-        return {
-          deprecated: 'Use tractioneye_verify_candidate for full safety + organicity checks',
-          trades: { count: trades.length, items: trades.slice(0, 50) },
-          ohlcv: { timeframe, candles: ohlcv.candles, meta: ohlcv.meta },
-          walletConcentration: { topWallets, totalTradeVolumeUsd: totalVolume },
-        };
+        return projectVerificationResult(result);
       },
     },
 
@@ -147,7 +84,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_buy_token',
       description:
-        'Buy a token after verification. Full flow: resolve symbol → cooldown check → safety gate (uses cached verify if <5min) → penalty preview → execute → register barriers atomically. Call AFTER verify_candidate confirmed the candidate. Returns penalty breakdown if penalties apply, then execution result.',
+        'Buy token: cooldown check → safety gate → penalty application → execute → register barriers atomically. Call AFTER verify_candidate.',
       parameters: {
         type: 'object',
         properties: {
@@ -316,7 +253,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_sell_token',
       description:
-        'Sell a token (full or partial). Handles: preview → validate → execute → poll. Use "all" for amountNano to sell entire position. Call when you decide to exit a position manually.',
+        'Sell token (full or partial). Use "all" for amountNano to exit entire position.',
       parameters: {
         type: 'object',
         properties: {
@@ -364,7 +301,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_set_tp_sl',
       description:
-        'Set or modify barriers for an existing position or set defaults. Supports full Triple Barrier config: TP, SL, trailing stop, time limit, partial TP. Use to MODIFY barriers on already-open positions (barriers are set atomically at buy time via buy_token).',
+        'Modify barriers on open positions or set defaults. Barriers are set atomically at buy time via buy_token.',
       parameters: {
         type: 'object',
         properties: {
@@ -416,7 +353,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_update_screening_config',
       description:
-        'Update token screening criteria used by the background daemon for candidate selection. Call during reflection after analyzing trading results to improve future candidate quality. Writes to ~/.tractioneye/config.json.',
+        'Update daemon screening criteria (liquidity, volume, price changes, transactions). Writes to config.json.',
       parameters: {
         type: 'object',
         properties: {
@@ -469,7 +406,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_get_status',
       description:
-        'Get strategy performance (PnL, win rate, balance, drawdown) and current portfolio (positions with PnL) in one call. Call during reflection or when user asks about performance.',
+        'Strategy performance (PnL, win rate, balance, drawdown) and current portfolio positions.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       handler: async () => {
         const [summary, portfolio] = await Promise.all([
@@ -484,7 +421,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_screen_tokens',
       description:
-        'Screen TON tokens/pools by criteria: liquidity, FDV, market cap, volume, price change (5m to 24h), transactions, buy/sell ratio, unique buyers. Returns matching pools from DEX market data. Use for ad-hoc screening beyond the daemon briefing.',
+        'Screen TON pools by criteria (liquidity, volume, price changes, transactions, buy/sell ratio, unique buyers). Ad-hoc discovery beyond daemon briefing.',
       parameters: {
         type: 'object',
         properties: {
@@ -516,7 +453,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
       handler: async (args) => {
         const sources = args['sources'] as ScreeningSource[] | undefined;
         const rangeArg = (key: string) => args[key] as { min?: number; max?: number } | undefined;
-        return client.screenTokens({
+        const pools = await client.screenTokens({
           filter: {
             minLiquidityUsd: args['minLiquidityUsd'] as number | undefined,
             maxLiquidityUsd: args['maxLiquidityUsd'] as number | undefined,
@@ -538,6 +475,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
           },
           sources,
         });
+        return pools.map(projectPoolInfoFull);
       },
     },
 
@@ -545,7 +483,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_find',
       description:
-        'Find a token by symbol or search pools by keyword. Combines findToken (symbol → address) and searchPools (keyword → pool list). Use when you need to resolve a token or explore pools by name.',
+        'Find token by symbol or search pools by keyword. Returns token address and matching pools.',
       parameters: {
         type: 'object',
         properties: {
@@ -560,7 +498,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
           client.findToken(query),
           client.searchPools(query),
         ]);
-        return { token, pools };
+        return { token, pools: pools.map(projectPoolInfoCompact) };
       },
     },
 
@@ -568,7 +506,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_get_token_price',
       description:
-        'Get current USD price for a token by its contract address. Use for quick price checks.',
+        'Current USD price for a token by contract address.',
       parameters: {
         type: 'object',
         properties: {
@@ -584,7 +522,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_get_available_tokens',
       description:
-        'Get the list of tokens that can be traded in this strategy. Use to check what tokens are available or to resolve symbols and addresses.',
+        'List tokens available for trading in this strategy.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       handler: async () => client.getAvailableTokens(),
     },
@@ -593,7 +531,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_get_simulation_results',
       description:
-        'Get dry-run simulation results: win rate, average P&L, recommended TP/SL/position size parameters. Only available in dry-run mode. Call after running simulation to evaluate strategy before going live.',
+        'Dry-run simulation results: win rate, avg PnL, recommended parameters. Only available in simulation mode.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       handler: async () => client.getSimulationResults(),
     },
@@ -602,7 +540,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_review_position',
       description:
-        'Check thesis for an open position: get fresh market data, compare with entry snapshot, return verdict (intact/weakening/broken). Call to review position health during a session.',
+        'Fresh thesis check for an open position: organicity, signals, trade flow. Uses 2 gecko calls.',
       parameters: {
         type: 'object',
         properties: {
@@ -638,7 +576,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
             buyers1h: poolInfo.transactions.h1.buyers,
             sellers1h: poolInfo.transactions.h1.sellers,
           },
-          organicity,
+          organicity: projectOrganicity(organicity),
           signals,
           tradeFlow: {
             recentTrades: trades.length,
@@ -653,7 +591,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_record_reflection',
       description:
-        'Write a reflection entry to the log. Call after closing a position or at end of session. Entries are append-only in ~/.tractioneye/state/reflection_log.jsonl.',
+        'Append reflection to log. Types: trade_closed, thesis_review, session_summary, lesson_learned.',
       parameters: {
         type: 'object',
         properties: {
@@ -723,7 +661,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_read_risk_policy',
       description:
-        'Get current risk caps and limits. Agent cannot change hard policy — this is read-only. Includes: max positions, exposure cap, price impact limit, cooldown duration, default barriers.',
+        'Read-only risk caps and limits: max positions, exposure, price impact, cooldown, default barriers.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       handler: async () => {
         const config = readConfig();
@@ -735,7 +673,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
     {
       name: 'tractioneye_read_api_budget',
       description:
-        'Get current API quota state. Shows gecko and dexscreener usage vs limits. Agent knows its budget.',
+        'Current API quota state: gecko and dexscreener usage vs limits.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       handler: async () => {
         // Return rate limiter stats from client

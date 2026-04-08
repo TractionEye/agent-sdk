@@ -1183,6 +1183,92 @@ var TractionEyeClient = class _TractionEyeClient {
   }
 };
 
+// src/state/market.ts
+import { readFileSync } from "fs";
+function readMarketState() {
+  try {
+    const raw = readFileSync(marketStatePath(), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function writeMarketState(state) {
+  atomicWriteJsonSync(marketStatePath(), state);
+  try {
+    const briefing = {
+      timestamp: state.updatedAt,
+      candidates: state.shortlist,
+      topLists: state.topLists,
+      portfolio: void 0,
+      strategy: void 0
+    };
+    atomicWriteJsonSync(briefingPath(), briefing);
+  } catch {
+  }
+}
+
+// src/tools/projection.ts
+function projectPoolInfoFull(p) {
+  const { name: _n, socials: _s, websites: _w, priceNative: _pn, baseTokenPriceUsd: _bp, baseTokenId: _bt, ...rest } = p;
+  return { ...rest, symbol: p.name.split(" / ")[0] ?? p.name, tokenAddress: p.baseTokenId ?? "" };
+}
+function projectPoolInfoCompact(p) {
+  return {
+    poolAddress: p.poolAddress,
+    tokenAddress: p.baseTokenId ?? "",
+    symbol: p.name.split(" / ")[0] ?? p.name,
+    dexId: p.dexId,
+    tags: p.tags,
+    reserveInUsd: p.reserveInUsd,
+    fdvUsd: p.fdvUsd,
+    marketCapUsd: p.marketCapUsd,
+    volume1hUsd: p.volume1hUsd,
+    volume24hUsd: p.volume24hUsd,
+    priceChange1h: p.priceChange1h,
+    priceChange24h: p.priceChange24h,
+    buys1h: p.buys1h,
+    sells1h: p.sells1h,
+    buySellRatio: p.buySellRatio,
+    uniqueBuyers1h: p.uniqueBuyers1h,
+    lockedLiquidityPercent: p.lockedLiquidityPercent,
+    boostTotalAmount: p.boostTotalAmount,
+    cto: p.cto,
+    createdAt: p.createdAt
+  };
+}
+function projectVerificationResult(r) {
+  const { ohlcv: _dropped, ...momentumRest } = r.momentum;
+  return { ...r, momentum: momentumRest };
+}
+function projectMarketState(s) {
+  return {
+    updatedAt: s.updatedAt,
+    marketRegime: s.marketRegime,
+    tonPriceUsd: s.tonPriceUsd,
+    candidates: s.shortlist,
+    topLists: {
+      byVolume: s.topLists.byVolume.slice(0, 5),
+      byLiquidity: s.topLists.byLiquidity.slice(0, 5),
+      byFdv: s.topLists.byFdv.slice(0, 5),
+      gainers1h: s.topLists.gainers1h.slice(0, 5),
+      gainers24h: s.topLists.gainers24h.slice(0, 5),
+      byTxCount: s.topLists.byTxCount.slice(0, 5)
+    },
+    pendingVerifications: s.pendingVerifications,
+    openPositionReviews: s.openPositionReviews,
+    cooldownTokens: s.cooldownTokens,
+    apiUsage: s.apiUsage
+  };
+}
+function projectOrganicity(o) {
+  return {
+    verdict: o.verdict,
+    score: o.score,
+    failedSignals: o.signals.filter((s) => !s.passed).map((s) => s.name)
+  };
+}
+
 // src/verify/pipeline.ts
 var VERIFY_CACHE_TTL_MS = 5 * 6e4;
 var verifyCache = /* @__PURE__ */ new Map();
@@ -1229,8 +1315,6 @@ async function verifyCandidate(gecko, tokenAddress, poolAddress, dexId, poolCrea
   geckoCallsUsed++;
   const organicity = checkOrganicity(poolInfo, trades);
   const candles = ohlcvResp.candles;
-  const volumeTrend = determineVolumeTrend(candles);
-  const priceAction = determinePriceAction(candles);
   const buyPressureVal = poolInfo.transactions.h1.buys + poolInfo.transactions.h1.sells > 0 ? poolInfo.transactions.h1.buys / (poolInfo.transactions.h1.buys + poolInfo.transactions.h1.sells) : 0;
   const signals = computeSignals(null, poolInfo);
   const confidence = buildConfidence(tokenInfo, poolInfo, signals, organicity);
@@ -1287,9 +1371,13 @@ async function verifyCandidate(gecko, tokenAddress, poolAddress, dexId, poolCrea
     },
     organicity,
     momentum: {
-      volumeTrend,
       buyPressure: buyPressureVal,
-      priceAction,
+      volumeRatio1h: computeVolumeRatio(candles, 1),
+      volumeRatio5h: computeVolumeRatio(candles, 5),
+      priceChange1h: computePriceChange(candles, 1),
+      priceChange5h: computePriceChange(candles, 5),
+      avgCandleRange1h: computeAvgCandleRange(candles, 1),
+      avgCandleRange5h: computeAvgCandleRange(candles, 5),
       ohlcv: candles
     },
     execution: {
@@ -1309,29 +1397,29 @@ async function verifyCandidate(gecko, tokenAddress, poolAddress, dexId, poolCrea
     }
   };
 }
-function determineVolumeTrend(candles) {
-  if (candles.length < 4) return "stable";
-  const recent = candles.slice(-3);
-  const earlier = candles.slice(-6, -3);
-  if (earlier.length === 0) return "stable";
+function computeVolumeRatio(candles, recentCount) {
+  if (candles.length < recentCount + 1) return 1;
+  const recent = candles.slice(-recentCount);
+  const earlier = candles.slice(0, -recentCount);
+  if (earlier.length === 0) return 1;
   const recentAvg = recent.reduce((s, c) => s + c.volume, 0) / recent.length;
   const earlierAvg = earlier.reduce((s, c) => s + c.volume, 0) / earlier.length;
-  if (earlierAvg < 1) return "stable";
-  const ratio = recentAvg / earlierAvg;
-  if (ratio > 1.5) return "accelerating";
-  if (ratio < 0.5) return "decelerating";
-  return "stable";
+  if (earlierAvg < 1) return 1;
+  return Math.round(recentAvg / earlierAvg * 100) / 100;
 }
-function determinePriceAction(candles) {
-  if (candles.length < 3) return "sideways";
-  const recent = candles.slice(-5);
-  const first = recent[0].close;
-  const last = recent[recent.length - 1].close;
-  if (first === 0) return "sideways";
-  const changePct = (last - first) / first * 100;
-  if (changePct > 5) return "uptrend";
-  if (changePct < -5) return "downtrend";
-  return "sideways";
+function computePriceChange(candles, count) {
+  if (candles.length < 2) return 0;
+  const slice = candles.slice(-count);
+  const first = slice[0].close;
+  const last = slice[slice.length - 1].close;
+  if (first === 0) return 0;
+  return Math.round((last - first) / first * 1e4) / 100;
+}
+function computeAvgCandleRange(candles, count) {
+  const slice = candles.slice(-count);
+  if (slice.length === 0) return 0;
+  const ranges = slice.map((c) => c.close > 0 ? (c.high - c.low) / c.close * 100 : 0);
+  return Math.round(ranges.reduce((s, r) => s + r, 0) / ranges.length * 100) / 100;
 }
 
 // src/safety/gate.ts
@@ -1435,7 +1523,7 @@ var DEFAULT_RISK_POLICY = {
 };
 
 // src/state/cooldown.ts
-import { readFileSync } from "fs";
+import { readFileSync as readFileSync2 } from "fs";
 var COOLDOWN_TRIGGERS = /* @__PURE__ */ new Set([
   "stop_loss",
   "thesis_exit",
@@ -1449,7 +1537,7 @@ var CooldownManager = class {
   /** Load cooldown state from disk. Filters out expired entries. */
   loadFromDisk() {
     try {
-      const raw = readFileSync(cooldownPath(), "utf-8");
+      const raw = readFileSync2(cooldownPath(), "utf-8");
       const state = JSON.parse(raw);
       this.entries = new Map(Object.entries(state.entries));
     } catch {
@@ -1538,19 +1626,21 @@ function createTractionEyeTools(client) {
     // ── 1. read_briefing ────────────────────────────────────────────────
     {
       name: "tractioneye_read_briefing",
-      description: "Call this FIRST on every trading session tick. Returns market candidates collected from multiple perspectives (volume leaders, trending 5m/1h for catching early growth, most active by transactions, newly created), current portfolio, and strategy performance. Each candidate has tags showing how it was discovered \u2014 a pool appearing in several categories simultaneously may indicate a stronger signal. The briefing also includes top-lists sorted by volume, liquidity, FDV, transaction count, and price gainers (1h, 24h) \u2014 use these different views to compare, form hypotheses about what makes a good candidate, and verify your assumptions across sessions.",
+      description: "Market briefing: candidates, regime, TON price, top-lists, cooldowns, API usage. Call FIRST each tick.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => {
         touchSessionLock();
+        const state = readMarketState();
+        if (state) return projectMarketState(state);
         const briefing = readBriefing();
-        if (!briefing) return { error: "No briefing file found. Is the daemon running?" };
+        if (!briefing) return { error: "No market state found. Is the daemon running?" };
         return briefing;
       }
     },
     // ── 2. verify_candidate (replaces analyze_pool) ──────────────────────
     {
       name: "tractioneye_verify_candidate",
-      description: "Full verification of a trading candidate. Runs 4-call pipeline: token safety (honeypot/mint/freeze), pool health (unique buyers, liquidity), trade flow analysis (whale detection, wash check), OHLCV price structure. Returns safety verdict, organicity check, momentum signals, confidence score, and penalty breakdown. Call AFTER read_briefing, BEFORE buy_token. Uses 2-4 GeckoTerminal API requests (2 if recently verified, 4 if fresh).",
+      description: "Full 4-call GeckoTerminal verification: safety, organicity, momentum, confidence. Call AFTER read_briefing, BEFORE buy_token. Uses 2-4 gecko calls.",
       parameters: {
         type: "object",
         properties: {
@@ -1568,75 +1658,20 @@ function createTractionEyeTools(client) {
         const poolAddress = args["poolAddress"];
         const dexId = args["dexId"] ?? "";
         const poolCreatedAt = args["poolCreatedAt"];
-        return verifyCandidate(
+        const result = await verifyCandidate(
           client.gecko,
           tokenAddress,
           poolAddress,
           dexId,
           poolCreatedAt
         );
-      }
-    },
-    // ── 2b. analyze_pool (deprecated alias) ────────────────────────────
-    {
-      name: "tractioneye_analyze_pool",
-      description: "[DEPRECATED \u2014 use tractioneye_verify_candidate instead] Deep-analyze a candidate pool.",
-      parameters: {
-        type: "object",
-        properties: {
-          poolAddress: { type: "string", description: "Pool address to analyze" },
-          tokenAddress: { type: "string", description: "Token address (required for full verify)" },
-          ohlcvTimeframe: {
-            type: "string",
-            enum: ["day", "hour", "minute"],
-            description: "OHLCV timeframe (default: hour)"
-          },
-          ohlcvLimit: { type: "number", description: "Number of candles (default: 30)" },
-          minTradeVolumeUsd: {
-            type: "number",
-            description: "Only return trades above this USD volume (whale filter)"
-          }
-        },
-        required: ["poolAddress"],
-        additionalProperties: false
-      },
-      handler: async (args) => {
-        touchSessionLock();
-        const poolAddress = args["poolAddress"];
-        const tokenAddress = args["tokenAddress"];
-        if (tokenAddress) {
-          return verifyCandidate(client.gecko, tokenAddress, poolAddress, "");
-        }
-        const timeframe = args["ohlcvTimeframe"] ?? "hour";
-        const limit = args["ohlcvLimit"] ?? 30;
-        const minVol = args["minTradeVolumeUsd"];
-        const trades = await client.gecko.getPoolTrades(
-          poolAddress,
-          minVol != null ? { tradeVolumeInUsdGreaterThan: minVol } : void 0
-        );
-        const ohlcv = await client.gecko.getPoolOhlcv(poolAddress, timeframe, limit);
-        const walletVolume = /* @__PURE__ */ new Map();
-        for (const t of trades) {
-          walletVolume.set(t.txFromAddress, (walletVolume.get(t.txFromAddress) ?? 0) + t.volumeInUsd);
-        }
-        const totalVolume = trades.reduce((s, t) => s + t.volumeInUsd, 0);
-        const topWallets = [...walletVolume.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([address, volume]) => ({
-          address,
-          volumeUsd: volume,
-          percentOfTotal: totalVolume > 0 ? Math.round(volume / totalVolume * 1e4) / 100 : 0
-        }));
-        return {
-          deprecated: "Use tractioneye_verify_candidate for full safety + organicity checks",
-          trades: { count: trades.length, items: trades.slice(0, 50) },
-          ohlcv: { timeframe, candles: ohlcv.candles, meta: ohlcv.meta },
-          walletConcentration: { topWallets, totalTradeVolumeUsd: totalVolume }
-        };
+        return projectVerificationResult(result);
       }
     },
     // ── 3. buy_token (v2: safety gate + cooldown + penalty + barriers) ──
     {
       name: "tractioneye_buy_token",
-      description: "Buy a token after verification. Full flow: resolve symbol \u2192 cooldown check \u2192 safety gate (uses cached verify if <5min) \u2192 penalty preview \u2192 execute \u2192 register barriers atomically. Call AFTER verify_candidate confirmed the candidate. Returns penalty breakdown if penalties apply, then execution result.",
+      description: "Buy token: cooldown check \u2192 safety gate \u2192 penalty application \u2192 execute \u2192 register barriers atomically. Call AFTER verify_candidate.",
       parameters: {
         type: "object",
         properties: {
@@ -1773,7 +1808,7 @@ function createTractionEyeTools(client) {
     // ── 4. sell_token ───────────────────────────────────────────────────
     {
       name: "tractioneye_sell_token",
-      description: 'Sell a token (full or partial). Handles: preview \u2192 validate \u2192 execute \u2192 poll. Use "all" for amountNano to sell entire position. Call when you decide to exit a position manually.',
+      description: 'Sell token (full or partial). Use "all" for amountNano to exit entire position.',
       parameters: {
         type: "object",
         properties: {
@@ -1811,7 +1846,7 @@ function createTractionEyeTools(client) {
     // ── 5. set_tp_sl (v2: supports full TripleBarrierConfig) ─────────────
     {
       name: "tractioneye_set_tp_sl",
-      description: "Set or modify barriers for an existing position or set defaults. Supports full Triple Barrier config: TP, SL, trailing stop, time limit, partial TP. Use to MODIFY barriers on already-open positions (barriers are set atomically at buy time via buy_token).",
+      description: "Modify barriers on open positions or set defaults. Barriers are set atomically at buy time via buy_token.",
       parameters: {
         type: "object",
         properties: {
@@ -1858,7 +1893,7 @@ function createTractionEyeTools(client) {
     // ── 6. update_screening_config ──────────────────────────────────────
     {
       name: "tractioneye_update_screening_config",
-      description: "Update token screening criteria used by the background daemon for candidate selection. Call during reflection after analyzing trading results to improve future candidate quality. Writes to ~/.tractioneye/config.json.",
+      description: "Update daemon screening criteria (liquidity, volume, price changes, transactions). Writes to config.json.",
       parameters: {
         type: "object",
         properties: {
@@ -1905,7 +1940,7 @@ function createTractionEyeTools(client) {
     // ── 7. get_status ───────────────────────────────────────────────────
     {
       name: "tractioneye_get_status",
-      description: "Get strategy performance (PnL, win rate, balance, drawdown) and current portfolio (positions with PnL) in one call. Call during reflection or when user asks about performance.",
+      description: "Strategy performance (PnL, win rate, balance, drawdown) and current portfolio positions.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => {
         const [summary, portfolio] = await Promise.all([
@@ -1918,7 +1953,7 @@ function createTractionEyeTools(client) {
     // ── 8. screen_tokens ────────────────────────────────────────────────
     {
       name: "tractioneye_screen_tokens",
-      description: "Screen TON tokens/pools by criteria: liquidity, FDV, market cap, volume, price change (5m to 24h), transactions, buy/sell ratio, unique buyers. Returns matching pools from DEX market data. Use for ad-hoc screening beyond the daemon briefing.",
+      description: "Screen TON pools by criteria (liquidity, volume, price changes, transactions, buy/sell ratio, unique buyers). Ad-hoc discovery beyond daemon briefing.",
       parameters: {
         type: "object",
         properties: {
@@ -1950,7 +1985,7 @@ function createTractionEyeTools(client) {
       handler: async (args) => {
         const sources = args["sources"];
         const rangeArg = (key) => args[key];
-        return client.screenTokens({
+        const pools = await client.screenTokens({
           filter: {
             minLiquidityUsd: args["minLiquidityUsd"],
             maxLiquidityUsd: args["maxLiquidityUsd"],
@@ -1972,12 +2007,13 @@ function createTractionEyeTools(client) {
           },
           sources
         });
+        return pools.map(projectPoolInfoFull);
       }
     },
     // ── 9. find ─────────────────────────────────────────────────────────
     {
       name: "tractioneye_find",
-      description: "Find a token by symbol or search pools by keyword. Combines findToken (symbol \u2192 address) and searchPools (keyword \u2192 pool list). Use when you need to resolve a token or explore pools by name.",
+      description: "Find token by symbol or search pools by keyword. Returns token address and matching pools.",
       parameters: {
         type: "object",
         properties: {
@@ -1992,13 +2028,13 @@ function createTractionEyeTools(client) {
           client.findToken(query),
           client.searchPools(query)
         ]);
-        return { token, pools };
+        return { token, pools: pools.map(projectPoolInfoCompact) };
       }
     },
     // ── 10. get_token_price ─────────────────────────────────────────────
     {
       name: "tractioneye_get_token_price",
-      description: "Get current USD price for a token by its contract address. Use for quick price checks.",
+      description: "Current USD price for a token by contract address.",
       parameters: {
         type: "object",
         properties: {
@@ -2012,21 +2048,21 @@ function createTractionEyeTools(client) {
     // ── 11. get_available_tokens ────────────────────────────────────────
     {
       name: "tractioneye_get_available_tokens",
-      description: "Get the list of tokens that can be traded in this strategy. Use to check what tokens are available or to resolve symbols and addresses.",
+      description: "List tokens available for trading in this strategy.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => client.getAvailableTokens()
     },
     // ── 12. get_simulation_results ──────────────────────────────────────
     {
       name: "tractioneye_get_simulation_results",
-      description: "Get dry-run simulation results: win rate, average P&L, recommended TP/SL/position size parameters. Only available in dry-run mode. Call after running simulation to evaluate strategy before going live.",
+      description: "Dry-run simulation results: win rate, avg PnL, recommended parameters. Only available in simulation mode.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => client.getSimulationResults()
     },
     // ── 13. review_position (v2) ───────────────────────────────────────
     {
       name: "tractioneye_review_position",
-      description: "Check thesis for an open position: get fresh market data, compare with entry snapshot, return verdict (intact/weakening/broken). Call to review position health during a session.",
+      description: "Fresh thesis check for an open position: organicity, signals, trade flow. Uses 2 gecko calls.",
       parameters: {
         type: "object",
         properties: {
@@ -2053,7 +2089,7 @@ function createTractionEyeTools(client) {
             buyers1h: poolInfo.transactions.h1.buyers,
             sellers1h: poolInfo.transactions.h1.sellers
           },
-          organicity,
+          organicity: projectOrganicity(organicity),
           signals,
           tradeFlow: {
             recentTrades: trades.length,
@@ -2066,7 +2102,7 @@ function createTractionEyeTools(client) {
     // ── 14. record_reflection (v2) ─────────────────────────────────────
     {
       name: "tractioneye_record_reflection",
-      description: "Write a reflection entry to the log. Call after closing a position or at end of session. Entries are append-only in ~/.tractioneye/state/reflection_log.jsonl.",
+      description: "Append reflection to log. Types: trade_closed, thesis_review, session_summary, lesson_learned.",
       parameters: {
         type: "object",
         properties: {
@@ -2132,7 +2168,7 @@ function createTractionEyeTools(client) {
     // ── 15. read_risk_policy (v2) ──────────────────────────────────────
     {
       name: "tractioneye_read_risk_policy",
-      description: "Get current risk caps and limits. Agent cannot change hard policy \u2014 this is read-only. Includes: max positions, exposure cap, price impact limit, cooldown duration, default barriers.",
+      description: "Read-only risk caps and limits: max positions, exposure, price impact, cooldown, default barriers.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => {
         const config = readConfig();
@@ -2142,7 +2178,7 @@ function createTractionEyeTools(client) {
     // ── 16. read_api_budget (v2) ────────────────────────────────────────
     {
       name: "tractioneye_read_api_budget",
-      description: "Get current API quota state. Shows gecko and dexscreener usage vs limits. Agent knows its budget.",
+      description: "Current API quota state: gecko and dexscreener usage vs limits.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       handler: async () => {
         return {
@@ -2438,31 +2474,6 @@ var QuotaManager = class {
   }
 };
 
-// src/state/market.ts
-import { readFileSync as readFileSync2 } from "fs";
-function readMarketState() {
-  try {
-    const raw = readFileSync2(marketStatePath(), "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-function writeMarketState(state) {
-  atomicWriteJsonSync(marketStatePath(), state);
-  try {
-    const briefing = {
-      timestamp: state.updatedAt,
-      candidates: state.shortlist,
-      topLists: state.topLists,
-      portfolio: void 0,
-      strategy: void 0
-    };
-    atomicWriteJsonSync(briefingPath(), briefing);
-  } catch {
-  }
-}
-
 // src/state/candidates.ts
 import { readFileSync as readFileSync3 } from "fs";
 function readCandidateRegistry() {
@@ -2484,7 +2495,7 @@ function transitionCandidate(registry, tokenAddress, newState, extra) {
   if (!candidate) return false;
   candidate.state = newState;
   candidate.lastUpdatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  if (extra?.verification) candidate.verification = extra.verification;
+  if (extra?.verification) candidate.verification = projectVerificationResult(extra.verification);
   if (extra?.rejectionReason) candidate.rejectionReason = extra.rejectionReason;
   if (extra?.archetype) candidate.archetype = extra.archetype;
   return true;

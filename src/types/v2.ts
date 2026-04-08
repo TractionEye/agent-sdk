@@ -241,9 +241,13 @@ export type VerificationResult = {
   };
   organicity: OrganicityVerdict;
   momentum: {
-    volumeTrend: 'accelerating' | 'stable' | 'decelerating';
     buyPressure: number;
-    priceAction: 'uptrend' | 'sideways' | 'downtrend';
+    volumeRatio1h: number;
+    volumeRatio5h: number;
+    priceChange1h: number;
+    priceChange5h: number;
+    avgCandleRange1h: number;
+    avgCandleRange5h: number;
     ohlcv: OhlcvCandle[];
   };
   execution: {
@@ -261,6 +265,22 @@ export type VerificationResult = {
     geckoCallsUsed: number;
     timestamp: string;
   };
+};
+
+// ---- Stored Verification (ohlcv stripped for disk + LLM savings) ----
+
+export type StoredMomentum = {
+  buyPressure: number;
+  volumeRatio1h: number;
+  volumeRatio5h: number;
+  priceChange1h: number;
+  priceChange5h: number;
+  avgCandleRange1h: number;
+  avgCandleRange5h: number;
+};
+
+export type StoredVerificationResult = Omit<VerificationResult, 'momentum'> & {
+  momentum: StoredMomentum;
 };
 
 // ---- Cooldown (Section VI-C) ----
@@ -392,7 +412,7 @@ export type CandidateEntry = {
   lastUpdatedAt: string;
   discoveryTags: string[];
   archetype: string | null;
-  verification: VerificationResult | null;
+  verification: StoredVerificationResult | null;
   rejectionReason: string | null;
   ttl: string;
 };

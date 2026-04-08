@@ -17,7 +17,7 @@
  * See SPEC-V2.md Sections III, VI-A.
  */
 
-import { writeFileSync, watchFile } from 'node:fs';
+import { watchFile } from 'node:fs';
 import { execFile } from 'node:child_process';
 import {
   TractionEyeClient,
@@ -26,7 +26,6 @@ import {
   CooldownManager,
   QuotaManager,
   readConfig,
-  briefingPath,
   configPath,
   ensureDataDir,
   ensureStateDir,
@@ -66,7 +65,7 @@ const JUNK_FILTER: ScreeningFilter = {
   minVolume24hUsd: 0.01,
 };
 
-const TOP_LIST_SIZE = 10;
+const TOP_LIST_SIZE = 5;
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -439,16 +438,6 @@ async function runScout(): Promise<void> {
       },
     };
     writeMarketState(marketState);
-
-    // Also write legacy briefing.json for backward compatibility
-    const briefing = {
-      timestamp: marketState.updatedAt,
-      candidates,
-      tops: marketState.topLists,
-      portfolio,
-      strategy,
-    };
-    writeFileSync(briefingPath(), JSON.stringify(briefing, null, 2) + '\n', 'utf-8');
 
     console.log(`[daemon] Scout: ${shortlist.length} candidates, regime=${marketRegime}`);
 
