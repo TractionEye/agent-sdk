@@ -183,6 +183,35 @@ async function run() {
     }
   } catch (e) { fail('findToken() unknown symbol', e); }
 
+  // ── 12. findTokenByAddress — address lookup (validates search endpoint supports contract address queries)
+  console.log('\n[12] findTokenByAddress() — lookup by contract address (WETH)');
+  try {
+    const bySymbol = await client!.findToken('WETH');
+    if (!bySymbol) {
+      fail('findTokenByAddress() WETH', 'could not resolve WETH address via findToken() — prerequisite failed');
+    } else {
+      const resolvedAddr = bySymbol.address;
+      const byAddr = await client!.findTokenByAddress(resolvedAddr);
+      if (byAddr && byAddr.address === resolvedAddr && byAddr.symbol === 'WETH') {
+        ok('findTokenByAddress() WETH', `address=${byAddr.address.slice(0, 12)}... symbol=${byAddr.symbol}`);
+      } else if (byAddr === null) {
+        fail('findTokenByAddress() WETH', `returned null for address ${resolvedAddr} — search endpoint may not support address queries`);
+      } else {
+        fail('findTokenByAddress() WETH', `unexpected result: ${JSON.stringify(byAddr)}`);
+      }
+    }
+  } catch (e) { fail('findTokenByAddress() WETH', e); }
+
+  console.log('\n[13] findTokenByAddress() — unknown address (expect null)');
+  try {
+    const token = await client!.findTokenByAddress('EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAnotreal');
+    if (token === null) {
+      ok('findTokenByAddress() unknown address', 'returned null as expected');
+    } else {
+      fail('findTokenByAddress() unknown address', `expected null, got ${JSON.stringify(token)}`);
+    }
+  } catch (e) { fail('findTokenByAddress() unknown address', e); }
+
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
   if (failed > 0) process.exit(1);
 }

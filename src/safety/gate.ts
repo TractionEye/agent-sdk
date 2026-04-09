@@ -71,7 +71,7 @@ export function checkSafety(ctx: SafetyContext): SafetyCheckResult {
   // EXPOSURE_CAP: Total exposure > maxTotalExposurePercent
   // This is checked at buy time based on proposed trade size — checked externally
 
-  // NOT_TRADEABLE: findToken() === null
+  // NOT_TRADEABLE: findTokenByAddress() === null
   if (!ctx.isTradeable) {
     rejects.push({ id: 'NOT_TRADEABLE', reason: 'Token not available on TractionEye' });
   }
