@@ -24,7 +24,7 @@ export type SafetyContext = {
   cooldownMap: Map<string, CooldownEntry>;
   tokenAddress: string;
   isTradeable: boolean;
-  poolAge: number;     // age in minutes
+  poolAge: number | null;  // age in minutes; null if pool creation date unknown
   cto: boolean;
 };
 
@@ -121,7 +121,7 @@ export function checkSafety(ctx: SafetyContext): SafetyCheckResult {
   }
 
   // TOO_FRESH: Pool age < 30 minutes
-  if (ctx.poolAge < 30) {
+  if (ctx.poolAge !== null && ctx.poolAge < 30) {
     penalties.push({ id: 'TOO_FRESH', multiplier: 0.5, reason: `Pool is only ${ctx.poolAge} minutes old` });
   }
 
