@@ -157,7 +157,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
         }
 
         // Check tradability
-        const isTradeable = (await client.findToken(tokenAddress.split('/').pop() ?? tokenAddress)) != null;
+        const isTradeable = (await client.findTokenByAddress(tokenAddress)) != null;
 
         // Get portfolio for position checks
         const portfolio = await client.getPortfolio();
@@ -168,7 +168,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
         const poolInfo = cached?.poolInfo ?? null;
 
         // Compute pool age
-        let poolAge = 0;
+        let poolAge: number | null = null;
         if (poolInfo?.poolCreatedAt) {
           poolAge = Math.floor((Date.now() - new Date(poolInfo.poolCreatedAt).getTime()) / 60_000);
         }

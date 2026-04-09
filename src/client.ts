@@ -264,6 +264,22 @@ export class TractionEyeClient {
     };
   }
 
+  async findTokenByAddress(address: string): Promise<AvailableToken | null> {
+    logMethodCall('findTokenByAddress', { address });
+    const r = await this.http.get<StonfiAssetsResponse>(
+      `/agent/assets/search?q=${encodeURIComponent(address)}&limit=10`,
+    );
+    const match = r.asset_list.find(
+      (a) => a.contract_address === address,
+    );
+    if (!match) return null;
+    return {
+      address: match.contract_address,
+      symbol: match.symbol,
+      decimals: match.decimals,
+    };
+  }
+
   // ── Trade methods ─────────────────────────────────────────────────────────
 
   async previewTrade(req: TradePreviewRequest): Promise<TradePreview> {
