@@ -9,7 +9,7 @@ import {
   touchSessionLock,
 } from '../config.js';
 import { readMarketState } from '../state/market.js';
-import { readPortfolioState, writePortfolioState, addPosition } from '../state/portfolio.js';
+import { readPortfolioState, writePortfolioState, addPosition, recordExitEvent } from '../state/portfolio.js';
 import { projectPoolInfoFull, projectPoolInfoCompact, projectVerificationResult, projectMarketState, projectOrganicity } from './projection.js';
 import { resolveBarriers } from './barriers.js';
 import { verifyCandidate, getCachedVerifyData } from '../verify/index.js';
@@ -341,10 +341,18 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
         // Poll status
         const result = await pollOperationStatus(client, execution.operationId);
 
-        // Write cooldown after successful sell so re-buy is gated by cooldownAfterExitMinutes
+        // Write cooldown and remove position from portfolio state after successful sell
         if (result.status === 'confirmed') {
           const cooldownMgr = new CooldownManager();
           cooldownMgr.addEntry(tokenAddress, 'manual');
+
+          try {
+            const portfolioState = readPortfolioState();
+            recordExitEvent(portfolioState, tokenAddress, 'manual', 0, 100, 'manual sell');
+            writePortfolioState(portfolioState);
+          } catch {
+            // Non-fatal: position cleanup failure should not surface as a trade error
+          }
         }
 
         return { status: result.status, operationId: result.operationId, preview, result };
