@@ -335,6 +335,13 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
 
         // Poll status
         const result = await pollOperationStatus(client, execution.operationId);
+
+        // Write cooldown after successful sell so re-buy is gated by cooldownAfterExitMinutes
+        if (result.status === 'confirmed') {
+          const cooldownMgr = new CooldownManager();
+          cooldownMgr.addEntry(tokenAddress, 'manual');
+        }
+
         return { status: result.status, operationId: result.operationId, preview, result };
       },
     },
