@@ -35,8 +35,15 @@ export function resolveBarriers(
     }
   }
 
-  // Layer 3: customBarriers merges over result (only present fields override; absent fields preserved)
-  if (customBarriers) return { ...base, ...customBarriers };
+  // Layer 3: customBarriers deep-merges over result (only present fields override; absent fields preserved)
+  if (customBarriers) {
+    const merged = { ...base, ...customBarriers };
+    if (customBarriers.partialTp && base.partialTp)
+      merged.partialTp = { ...base.partialTp, ...customBarriers.partialTp };
+    if (customBarriers.trailingStop && base.trailingStop)
+      merged.trailingStop = { ...base.trailingStop, ...customBarriers.trailingStop };
+    return merged;
+  }
 
   return base;
 }
