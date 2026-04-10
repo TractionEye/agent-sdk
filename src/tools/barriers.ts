@@ -35,8 +35,8 @@ export function resolveBarriers(
     }
   }
 
-  // Layer 3: explicit LLM override (highest priority)
-  if (customBarriers) return customBarriers;
+  // Layer 3: customBarriers merges over result (only present fields override; absent fields preserved)
+  if (customBarriers) return { ...base, ...customBarriers };
 
   return base;
 }

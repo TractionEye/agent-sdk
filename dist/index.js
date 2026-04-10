@@ -1344,7 +1344,7 @@ function resolveBarriers(tokenAddress, customBarriers, config, riskPolicy) {
       };
     }
   }
-  if (customBarriers) return customBarriers;
+  if (customBarriers) return { ...base, ...customBarriers };
   return base;
 }
 
@@ -1643,6 +1643,18 @@ var CooldownManager = class {
     this.saveToDisk();
   }
   /**
+   * Unconditionally add a cooldown entry for a token. Use for explicit exits
+   * (e.g. manual sells) that must always trigger cooldown regardless of close type.
+   */
+  addEntry(tokenAddress, closeType) {
+    this.entries.set(tokenAddress, {
+      tokenAddress,
+      exitTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      closeType
+    });
+    this.saveToDisk();
+  }
+  /**
    * Check if a token is in cooldown.
    * @param tokenAddress - Token to check
    * @param cooldownMinutes - Cooldown duration in minutes
@@ -1896,6 +1908,7 @@ function createTractionEyeTools(client) {
             lastReviewedAt: now,
             barriers,
             trailingStopActivated: false,
+            partialTpTriggered: false,
             exitEvents: []
           };
           try {
@@ -1960,6 +1973,10 @@ function createTractionEyeTools(client) {
           slippageTolerance: slippage
         });
         const result = await pollOperationStatus(client, execution.operationId);
+        if (result.status === "confirmed") {
+          const cooldownMgr = new CooldownManager();
+          cooldownMgr.addEntry(tokenAddress, "manual");
+        }
         return { status: result.status, operationId: result.operationId, preview, result };
       }
     },
