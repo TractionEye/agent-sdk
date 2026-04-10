@@ -1,6 +1,6 @@
 import type { TractionEyeClient } from '../client.js';
 import type { ScreeningSource } from '../screening/types.js';
-import type { TripleBarrierConfig } from '../types/v2.js';
+import type { TripleBarrierConfig, PositionThesis } from '../types/v2.js';
 import {
   readBriefing,
   readConfig,
@@ -9,7 +9,9 @@ import {
   touchSessionLock,
 } from '../config.js';
 import { readMarketState } from '../state/market.js';
+import { readPortfolioState, writePortfolioState, addPosition } from '../state/portfolio.js';
 import { projectPoolInfoFull, projectPoolInfoCompact, projectVerificationResult, projectMarketState, projectOrganicity } from './projection.js';
+import { resolveBarriers } from './barriers.js';
 import { verifyCandidate, getCachedVerifyData } from '../verify/index.js';
 import { checkSafety } from '../safety/index.js';
 import { DEFAULT_RISK_POLICY } from '../types/v2.js';
@@ -222,8 +224,48 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
         // Poll status
         const result = await pollOperationStatus(client, execution.operationId);
 
-        // Determine barriers
-        const barriers: TripleBarrierConfig = customBarriers ?? riskPolicy.defaultBarriers;
+        // Determine barriers (priority: defaultBarriers → perToken → customBarriers)
+        const barriers: TripleBarrierConfig = resolveBarriers(tokenAddress, customBarriers, config, riskPolicy);
+
+        // Persist position thesis on successful trade
+        if (result.status !== 'failed') {
+          const effectivePoolAddress = poolInfo?.poolAddress ?? poolAddress ?? '';
+          const effectiveSymbol = tokenInfo?.symbol ?? symbol ?? '';
+          const entryPriceUsd = parseFloat(poolInfo?.baseTokenPriceUsd ?? '0') || 0;
+          const now = new Date().toISOString();
+          const thesis: PositionThesis = {
+            tokenAddress,
+            poolAddress: effectivePoolAddress,
+            symbol: effectiveSymbol,
+            dexId: '',
+            entryPriceUsd,
+            entryTimestamp: now,
+            amountNano,
+            entrySizePercent: 0,
+            archetype,
+            entryReason,
+            thesisMetrics: {
+              entryBuyerDiversity1h: poolInfo?.transactions.h1.buyers ?? 0,
+              entryVolume1h: poolInfo?.volume.h1 ?? 0,
+              entryMomentum: 'unknown',
+            },
+            currentPriceUsd: null,
+            unrealizedPnlPercent: null,
+            peakPnlPercent: 0,
+            thesisStatus: 'intact',
+            lastReviewedAt: now,
+            barriers,
+            trailingStopActivated: false,
+            exitEvents: [],
+          };
+          try {
+            const portfolioState = readPortfolioState();
+            addPosition(portfolioState, thesis);
+            writePortfolioState(portfolioState);
+          } catch {
+            // Non-fatal: position works but won't survive restart
+          }
+        }
 
         // Build response with penalty breakdown
         const response: Record<string, unknown> = {
