@@ -341,8 +341,9 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
         // Poll status
         const result = await pollOperationStatus(client, execution.operationId);
 
-        // Write cooldown and remove position from portfolio state after successful sell
-        if (result.status === 'confirmed') {
+        // Write cooldown and remove position from portfolio state after full exit only.
+        // Partial sells must not trigger cooldown — agent still holds tokens and may average.
+        if (result.status === 'confirmed' && amountNano === 'all') {
           const cooldownMgr = new CooldownManager();
           cooldownMgr.addEntry(tokenAddress, 'manual');
 
