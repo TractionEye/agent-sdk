@@ -99,7 +99,7 @@ export function createTractionEyeTools(client: TractionEyeClient): Tool[] {
           entryReason: { type: 'string', description: 'Why you are buying (for reflection)' },
           barriers: {
             type: 'object',
-            description: 'Custom barrier config. Overrides ALL per-token config if provided. Omit to use risk policy defaults + per-token overrides.',
+            description: 'Custom barrier overrides — only specified fields override defaults/perToken settings. Omit to use risk policy defaults + per-token overrides.',
             properties: {
               stopLossPercent: { type: 'number' },
               takeProfitPercent: { type: 'number' },
